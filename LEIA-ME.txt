@@ -1,0 +1,52 @@
+APLICADOR CODEX
+===============
+
+Coloca a interface O Codex (login, seleção de personagem panorâmica e criação de personagem)
+dentro do executável do cliente. Use sempre que gerar um executável novo no WARP.
+
+O que é o "executável hexed"?
+  É o executável que o WARP gera depois de aplicar os patches que você marcou (o "diffado").
+  É ele que entra no aplicador. Não use o executável original sem patches.
+
+Executável que já recebeu a interface
+  Também pode ser usado: o aplicador retira a interface anterior e aplica a atual só com as
+  alterações marcadas. Serve para acrescentar ou tirar alterações (ex.: um Codex.exe só com a
+  tela de login passa a ter também a seleção) e para atualizar a interface para a versão nova
+  sem precisar do executável hexed. O resultado é idêntico ao de aplicar direto no hexed.
+  No WARP: não é mais preciso o patch de DLL "codex_ui", e a opção de ASLR deve ficar desligada.
+
+Como usar
+1. Abra "Aplicador Codex.exe".
+2. Escolha o executável hexed (botão PROCURAR, ou arraste o arquivo para a janela).
+3. Em "Alterações", marque o que deve entrar neste executável:
+     Tela de login                  servidores, login e "conectando" no tema
+     Seleção de personagem          mapa 3D panorâmico, lista, ficha e balão
+     Criação de personagem          (depende da seleção)
+     Chave Personalizada/Original   (depende da seleção) o jogador pode voltar à original
+     Postura de combate             (depende da seleção) selecionado em guarda e com golpe
+     Transição rápida               troca de mapa e @refresh sem a demora do fade
+     Barra de status                HP, SP, EXP, peso e zeny no estilo Ragnarok Zero
+     Janela de item                 descrição do item no tema
+     Equipamentos                   Alt+Q com atributos e informações
+     Inventário                     Alt+E com abas, busca e grade
+     Habilidades                    Alt+S em árvore por classe
+   O que ficar desmarcado continua como no Ragnarok original. As marcações são lembradas.
+4. Clique em APLICAR INTERFACE.
+5. O resultado vai para a pasta "Aplicados\<data e hora>\" (botão ABRIR PASTA APLICADOS):
+     Codex.exe   executável com a interface embutida (nenhuma .dll é necessária)
+     char.grf    mapa 3D, ícones, fontes e configurações da interface
+     COMO INSTALAR.txt  lista as alterações aplicadas nesse executável
+6. Copie esses dois arquivos para a pasta do cliente, substituindo os existentes.
+
+Cada aplicação gera uma pasta nova, então as anteriores ficam guardadas.
+Arquivos do jogador ficam em savedata\charselect\ no cliente (criados sozinhos).
+Se houver uma d3d9.dll ou codex_ui.dll antiga da interface na pasta do cliente, apague-as.
+Só funciona na versão do cliente Codex.exe 2025-06-04; outras versões são recusadas.
+
+Linha de comando (automação)
+  "Aplicador Codex.exe" <executável hexed> [/semgrf] [/alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades]
+  Sem /alteracoes, aplica todas.
+  Gera em Aplicados\<data e hora>\ e grava o registro em aplicador.log (código 0 = sucesso).
+
+Atualizar a interface: CharSelectPanorama\tools\publicar.sh recompila tudo e atualiza este aplicador.
+O código-fonte do aplicador está em "fonte".
