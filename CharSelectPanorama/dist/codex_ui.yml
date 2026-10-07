@@ -1,0 +1,11 @@
+# DLLs extras importadas pelo Codex.exe (patch de DLLs personalizadas do WARP).
+# Mantenha o cps.dll: o cliente depende dele.
+-
+  Name: cps.dll
+  Funcs:
+    - Name: "compress"
+    - Ordinal: 1
+-
+  Name: codex_ui.dll
+  Funcs:
+    - Ordinal: 1

@@ -2,3 +2,12 @@ fonte/obj/
 aplicador.ini
 Aplicados/
 *.user
+# Projeto da interface: arquivos gerados na compilação
+CharSelectPanorama/bin/
+CharSelectPanorama/obj/
+CharSelectPanorama/.vs/
+CharSelectPanorama/testes/
+CharSelectPanorama/dist/char.grf
+CharSelectPanorama/dist/Codex.exe
+__pycache__/
+*.pyc

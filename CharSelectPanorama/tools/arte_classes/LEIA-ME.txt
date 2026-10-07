@@ -1,0 +1,4 @@
+Desenhos vetoriais de https://game-icons.net (repositório github.com/game-icons/icons),
+licença CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/).
+Autores: Lorc, Delapouite, Skoll e Faithtoken (pasta = autor_nome.svg).
+Usados por tools/icones_classes.py para gerar charselect/icones (medalhões no tema O Codex).

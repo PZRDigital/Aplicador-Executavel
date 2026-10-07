@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{7C5B1E2A-4F3D-4C8E-9A61-2D0B8E5F4A10}</ProjectGuid>
+    <RootNamespace>CharSelectPanorama</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <TargetName>d3d9</TargetName>
+    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- /Zc:threadSafeInit-: sem TLS nas estáticas (a cópia embutida no exe não tem slot de TLS) -->
+      <AdditionalOptions>/utf-8 /Zc:threadSafeInit- %(AdditionalOptions)</AdditionalOptions>
+      <!-- ponteiros de frame: identificação de quem chama cada desenho (cursor) -->
+      <OmitFramePointers>false</OmitFramePointers>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>windowscodecs.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\chardata.cpp" />
+    <ClCompile Include="src\client.cpp" />
+    <ClCompile Include="src\config.cpp" />
+    <ClCompile Include="src\d3d_hooks.cpp" />
+    <ClCompile Include="src\dllmain.cpp" />
+    <ClCompile Include="src\filelog.cpp" />
+    <ClCompile Include="src\game.cpp" />
+    <ClCompile Include="src\gfx.cpp" />
+    <ClCompile Include="src\itemdb.cpp" />
+    <ClCompile Include="src\input.cpp" />
+    <ClCompile Include="src\log.cpp" />
+    <ClCompile Include="src\scene.cpp" />
+    <ClCompile Include="src\skin.cpp" />
+    <ClCompile Include="src\ui.cpp" />
+    <ClCompile Include="src\vfs.cpp" />
+    <ClCompile Include="src\miniz.c" />
+    <ClCompile Include="src\world3d.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\chardata.hpp" />
+    <ClInclude Include="src\client.hpp" />
+    <ClInclude Include="src\config.hpp" />
+    <ClInclude Include="src\d3d_hooks.hpp" />
+    <ClInclude Include="src\game.hpp" />
+    <ClInclude Include="src\gfx.hpp" />
+    <ClInclude Include="src\itemdb.hpp" />
+    <ClInclude Include="src\input.hpp" />
+    <ClInclude Include="src\log.hpp" />
+    <ClInclude Include="src\scene.hpp" />
+    <ClInclude Include="src\skin.hpp" />
+    <ClInclude Include="src\ui.hpp" />
+    <ClInclude Include="src\vfs.hpp" />
+    <ClInclude Include="src\world3d.hpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

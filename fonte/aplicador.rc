@@ -2,11 +2,11 @@
 #include <winres.h>
 
 // A interface compilada (CharSelectPanorama\bin\Release\d3d9.dll) vai dentro do aplicador
-IDR_INTERFACE RCDATA "..\\..\\CharSelectPanorama\\bin\\Release\\d3d9.dll"
+IDR_INTERFACE RCDATA "..\\CharSelectPanorama\\bin\\Release\\d3d9.dll"
 IDI_APP ICON "icone.ico"
-IDR_LOGO RCDATA "..\\..\\CharSelectPanorama\\dist\\charselect\\img\\logo.png"
-IDR_FONTE_TITULO RCDATA "..\\..\\CharSelectPanorama\\dist\\charselect\\fonts\\Cinzel.ttf"
-IDR_FONTE_TEXTO RCDATA "..\\..\\CharSelectPanorama\\dist\\charselect\\fonts\\Inter.ttf"
+IDR_LOGO RCDATA "..\\CharSelectPanorama\\dist\\charselect\\img\\logo.png"
+IDR_FONTE_TITULO RCDATA "..\\CharSelectPanorama\\dist\\charselect\\fonts\\Cinzel.ttf"
+IDR_FONTE_TEXTO RCDATA "..\\CharSelectPanorama\\dist\\charselect\\fonts\\Inter.ttf"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 1,0,0,0

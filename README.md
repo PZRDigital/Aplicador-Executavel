@@ -17,7 +17,19 @@ Detalhes, opções e uso pela linha de comando: [LEIA-ME.txt](LEIA-ME.txt).
 - `fonte/` — código do aplicador (Visual Studio 2022, Win32).
 
 ## Compilar
-O `fonte/aplicador.rc` embute arquivos do projeto da interface, que **não está neste repositório**:
-`..\..\CharSelectPanorama\bin\Release\d3d9.dll` (a interface compilada) e o logo e as fontes de
-`..\..\CharSelectPanorama\dist\charselect\`. Para recompilar, deixe a pasta `CharSelectPanorama`
-ao lado desta (em `NexusRO\`) e compile `fonte/Aplicador.vcxproj` em Release | Win32; o executável sai na raiz.
+- `fonte/` — o aplicador. O `fonte/aplicador.rc` embute a interface compilada
+  (`CharSelectPanorama\bin\Release\d3d9.dll`), o logo e as fontes de `CharSelectPanorama\dist\charselect\`.
+- `CharSelectPanorama/` — o projeto da interface (C++ em `src/`, ferramentas Python em `tools/`, dados em `dist/charselect/`).
+  `base/Codex_warp.exe` é o executável do WARP sem a interface; troque-o ao refazer o diff.
+
+Para gerar tudo de uma vez (interface, `char.grf`, cliente e o próprio aplicador), no WSL:
+
+```
+cd CharSelectPanorama
+tools/publicar.sh
+```
+
+Requer Visual Studio 2022 (MSBuild, Win32), Python 3 com Pillow, numpy e PyYAML, e a estrutura de pastas do NexusRO:
+`NexusRO\Aplicador de Executavel\` (este repositório), `NexusRO\Cliente 2025\` e `NexusRO\Emulador\`
+(usados para ler as GRFs do cliente e a db do rAthena). Para compilar só o aplicador, use `fonte/Aplicador.vcxproj`
+em Release | Win32 depois de compilar a interface (`CharSelectPanorama.vcxproj`).
