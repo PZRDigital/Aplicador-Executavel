@@ -1066,7 +1066,7 @@ namespace {
 	}
 
 	constexpr float BUFF_SHIFT = 30.0f; // quanto os ícones de buff descem (abaixo do nome do mapa)
-	constexpr float QUEST_W = 592, QUEST_H = 435, POKEDEX_W = 287, POKEDEX_H = 490;
+	constexpr float QUEST_W = 592, QUEST_H = 435, POKEDEX_W = 575, POKEDEX_H = 490;
 
 	// a barra do personagem é desenhada depois das janelas: some onde a janela de quests/Pokédex está
 	bool GageCovered( const client::WndRect& g ){

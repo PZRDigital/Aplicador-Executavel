@@ -110,6 +110,20 @@ namespace game {
 	Pet CurrentPet();
 	void PetCommand( int command );            // CZ_COMMAND_PET: 1 alimentar, 2 truque, 3 voltar ao ovo, 4 tirar acessório
 	void RenamePet( const std::string& name ); // CZ_RENAME_PET (codepage do cliente)
+	// Atributos do pet na Arena de Pets (servidor: F_PetArena_ShowPetStatus, modo Pokédex). A Pokédex pede com
+	// RequestPetArena (manda "@pokedex" pelo chat, sem aparecer) e o servidor responde com pacotes de som
+	// "#pdx:<chave>=<valores>" com ação "parar" (o cliente não toca nada)
+	struct PetArena {
+		bool valid = false;      // resposta completa recebida
+		bool accepted = false;   // pet aceito na arena (senão só valid + job)
+		int job = 0;
+		int level = 0, wins = 0, tierWins = 0, rebirths = 0, mmr = 0, rank = 0;
+		int str = 0, agi = 0, vit = 0, int_ = 0, dex = 0, luk = 0;
+		int hp = 0, aspd = 0, atkMin = 0, atkMax = 0, matkMin = 0, matkMax = 0, hit = 0, flee = 0, def = 0, mdef = 0;
+		uint32_t tick = 0;       // GetTickCount da resposta
+	};
+	PetArena CurrentPetArena();
+	void RequestPetArena();
 	// Janela de pet nativa (UIPetInfoWnd, Alt+J) e o botão de fechar dela
 	bool PetWindowRect( client::WndRect& out );
 	// Chat com os botões do Zero (16 px): os ícones do topo sobem de y 4 para 1 (não invadem o histórico)

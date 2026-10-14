@@ -112,6 +112,31 @@ namespace {
 
 	std::map<int, game::Quest> g_quests;
 	game::Pet g_pet;
+	game::PetArena g_arena, g_arenaNext;
+
+	// "#pdx:<chave>=<v1>,<v2>,..." (F_PetArena_ShowPetStatus no modo Pokédex)
+	void HandleArenaSound( const char* name ){
+		char k = name[5];
+		int v[4] = {};
+		sscanf_s( name + 7, "%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3] );
+		game::PetArena& n = g_arenaNext;
+		switch( k ){
+			case 'x': g_arena = game::PetArena(); g_arena.valid = true; g_arena.job = v[0]; g_arena.tick = GetTickCount(); break;
+			case 'c': n = game::PetArena(); n.job = v[0]; break;
+			case 'a': n.level = v[0]; n.wins = v[1]; n.tierWins = v[2]; n.rebirths = v[3]; break;
+			case 'm': n.mmr = v[0]; n.rank = v[1]; break;
+			case 's': n.str = v[0]; n.agi = v[1]; n.vit = v[2]; break;
+			case 'i': n.int_ = v[0]; n.dex = v[1]; n.luk = v[2]; break;
+			case 'h': n.hp = v[0]; n.aspd = v[1]; break;
+			case 'k': n.atkMin = v[0]; n.atkMax = v[1]; break;
+			case 'g': n.matkMin = v[0]; n.matkMax = v[1]; break;
+			case 't': n.hit = v[0]; n.flee = v[1]; break;
+			case 'd': n.def = v[0]; n.mdef = v[1]; break;
+			case 'e':
+				if( n.job == v[0] ){ n.valid = n.accepted = true; n.tick = GetTickCount(); g_arena = n; }
+				break;
+		}
+	}
 
 	game::QuestObjective* FindHunt( uint32_t hunt ){
 		auto q = g_quests.find( (int)( hunt / 1000 ) );
@@ -307,6 +332,13 @@ namespace {
 					g_pet.intimacy = Rd<int16_t>( b, 31 );
 					g_pet.accessory = Rd<uint16_t>( b, 33 );
 					g_pet.job = len >= 37 ? Rd<uint16_t>( b, 35 ) : 0;
+				}
+				break;
+			case 0x01D3: // ZC_SOUND: nome[24], ação, ...; "#pdx:" = dados da Arena de Pets
+				if( len >= 26 && memcmp( b + 2, "#pdx:", 5 ) == 0 && b[8] == '=' ){
+					char name[25] = {};
+					memcpy( name, b + 2, 24 );
+					HandleArenaSound( name );
 				}
 				break;
 			case 0x01A4: // ZC_CHANGESTATE_PET: tipo, GID, valor (1 intimidade, 2 fome, 3 acessório)
@@ -837,6 +869,24 @@ game::Pet game::CurrentPet(){
 void game::PetCommand( int command ){
 	uint8_t p[3] = { 0xA1, 0x01, (uint8_t)command };
 	SendPacket( p, sizeof( p ) );
+}
+
+game::PetArena game::CurrentPetArena(){
+	std::lock_guard<std::mutex> g( g_lock );
+	return g_arena;
+}
+
+void game::RequestPetArena(){
+	// CZ_REQUEST_CHAT: "<nome> : @pokedex" (comando do servidor; não aparece no chat)
+	char name[25] = {};
+	for( int i = 0; i < 24; i++ ) if( !Peek( S_NAME + i, name[i] ) ) break;
+	if( !name[0] ) return;
+	std::string msg = std::string( name ) + " : @pokedex";
+	std::vector<uint8_t> p( 4 + msg.size() + 1, 0 );
+	p[0] = 0xF3; p[1] = 0x00;
+	p[2] = (uint8_t)( p.size() & 0xFF ); p[3] = (uint8_t)( p.size() >> 8 );
+	memcpy( p.data() + 4, msg.data(), msg.size() );
+	SendPacket( p.data(), (int)p.size() );
 }
 
 void game::RenamePet( const std::string& name ){

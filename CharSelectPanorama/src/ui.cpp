@@ -2023,8 +2023,10 @@ bool ui::ZeroQuestRedirect( const input::Point& real, input::Point& target ){
 namespace {
 	void GameAssets( IDirect3DDevice9* dev ); // logo, brilho, engrenagem e disco (mais abaixo)
 
-	// img\pokedex.png (tools\pokedex.py, 287x490); posições iguais às do script
-	constexpr float PDX_W = 287, PDX_H = 490;
+	// img\pokedex.png (tools\pokedex.py, 575x490: tela esquerda 287 + dobradiça + tela direita); posições iguais às do script
+	constexpr float PDX_W = 575, PDX_H = 490, PDX_LW = 287;
+	// tela direita: visor verde (área de texto) e controles
+	constexpr float PDX_R = 303, PDX_LCD_X = PDX_R + 19, PDX_LCD_Y = 61, PDX_LCD_W = 234, PDX_LCD_H = 236;
 	constexpr float PDX_SCR_X = 46, PDX_SCR_Y = 109, PDX_SCR_W = 208, PDX_SCR_H = 206;
 	struct PetAnim { int frames = 0, w = 0, h = 0, ms = 100; gfx::Image strip; bool tried = false; };
 	std::map<int, PetAnim> g_petAnims;
@@ -2033,7 +2035,7 @@ namespace {
 	gfx::Image g_pokedex;
 	bool g_pokedexTried = false;
 
-	enum PLocal { P_NONE = 0, P_FEED, P_TRICK, P_EGG, P_ACC, P_RENAME, P_CLOSE, P_TITLE };
+	enum PLocal { P_NONE = 0, P_FEED, P_TRICK, P_EGG, P_ACC, P_RENAME, P_CLOSE, P_TITLE, P_PREV, P_NEXT, P_ARENA, P_ELEM };
 	struct PHit { float x, y, w, h; int local; };
 	struct {
 		std::vector<PHit> hits;
@@ -2043,7 +2045,48 @@ namespace {
 		std::wstring newName;
 		std::wstring notice;
 		DWORD noticeTick = 0, tick = 0;
+		int page = 0;            // visor da direita: 0 arena, 1 elementos
+		DWORD arenaAsked = 0;    // último pedido dos dados da arena
 	} g_pdx;
+
+	// elementos.txt (tools\elementos.py): tabela de dano por elemento e o elemento de cada monstro
+	constexpr int ELE_N = 10;
+	const wchar_t* const ELE_NAME[ELE_N] = { L"Neutro", L"Água", L"Terra", L"Fogo", L"Vento", L"Veneno", L"Sagrado", L"Sombrio", L"Fantasma", L"Maldito" };
+	const D3DCOLOR ELE_COLOR[ELE_N] = { Rgba( 190, 190, 190, 1.0f ), Rgba( 50, 120, 230, 1.0f ), Rgba( 150, 95, 45, 1.0f ), Rgba( 230, 60, 35, 1.0f ),
+		Rgba( 120, 230, 200, 1.0f ), Rgba( 150, 60, 190, 1.0f ), Rgba( 255, 235, 120, 1.0f ), Rgba( 50, 40, 70, 1.0f ),
+		Rgba( 210, 180, 255, 1.0f ), Rgba( 90, 70, 60, 1.0f ) };
+	int g_attr[4][ELE_N][ELE_N]; // [nível do alvo - 1][atacante][alvo] = dano %
+	std::map<int, std::pair<int, int>> g_mobEle; // classe -> elemento, nível (ausente = Neutro 1)
+	bool g_eleLoaded = false;
+
+	void LoadElements(){
+		if( g_eleLoaded ) return;
+		g_eleLoaded = true;
+		for( auto& a : g_attr ) for( auto& b : a ) for( int& v : b ) v = 100;
+		std::vector<unsigned char> data;
+		if( !vfs::Read( config::BaseDir() + L"elementos.txt", data ) ) return;
+		std::string all( data.begin(), data.end() );
+		for( size_t p = 0; p < all.size(); ){
+			size_t e = all.find( '\n', p );
+			if( e == std::string::npos ) e = all.size();
+			std::string l = all.substr( p, e - p );
+			p = e + 1;
+			if( l.empty() || l[0] == ';' ) continue;
+			int lv, atk, v[ELE_N];
+			if( l.compare( 0, 4, "attr" ) == 0 ){
+				if( sscanf_s( l.c_str(), "attr%d=%d:%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", &lv, &atk, &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &v[8], &v[9] ) == 12
+					&& lv >= 1 && lv <= 4 && atk >= 0 && atk < ELE_N )
+					for( int i = 0; i < ELE_N; i++ ) g_attr[lv - 1][atk][i] = v[i];
+			}else{
+				int id, ele;
+				if( sscanf_s( l.c_str(), "%d=%d,%d", &id, &ele, &lv ) == 3 && ele >= 0 && ele < ELE_N && lv >= 1 && lv <= 4 ) g_mobEle[id] = { ele, lv };
+			}
+		}
+	}
+
+	const wchar_t* RankName( int r ){
+		switch( r ){ case 1: return L"Bronze"; case 2: return L"Prata"; case 3: return L"Ouro"; case 4: return L"Platina"; default: return r >= 5 ? L"Diamante" : L"-"; }
+	}
 
 	void ReleasePokedexImages(){
 		gfx::Release( g_pokedex );
@@ -2096,6 +2139,117 @@ namespace {
 	}
 }
 
+namespace {
+	// visor verde da direita: atributos da Arena de Pets (página 0) ou fraquezas/forças do elemento (página 1)
+	void DrawPokedexRight( float x, float y, const game::Pet& pet, bool down ){
+		auto hov = [&]( float hx, float hy, float hw, float hh ){ return Hovered( x + hx, y + hy, hw, hh ); };
+		const D3DCOLOR lcd = Rgba( 18, 70, 28, 1.0f ), dim = Rgba( 40, 110, 52, 1.0f ), line = Rgba( 50, 140, 65, 1.0f );
+		float sx = x + PDX_LCD_X, sy = y + PDX_LCD_Y;
+		DWORD now = GetTickCount();
+		game::PetArena ar = game::CurrentPetArena();
+		// pede os dados ao abrir, ao trocar de pet e a cada 15 s (vitórias mudam depois das batalhas)
+		if( pet.valid && ( g_pdx.arenaAsked == 0 || ( ( ar.job != pet.job || now - ar.tick > 15000 ) && now - g_pdx.arenaAsked > 5000 ) ) ){
+			g_pdx.arenaAsked = now;
+			game::RequestPetArena();
+		}
+		auto title = [&]( const std::wstring& t, const std::wstring& right ){
+			gfx::Text( Font::ZeroName, t, sx + 8, sy + 6, lcd, gfx::Left, 0, false );
+			if( !right.empty() ) gfx::Text( Font::ZeroSmall, right, sx + PDX_LCD_W - 8, sy + 8, lcd, gfx::Right, 0, false );
+			gfx::Rect( sx + 6, sy + 24, PDX_LCD_W - 12, 1, line );
+		};
+		auto center = [&]( const std::wstring& t, float yy ){ gfx::Text( Font::ZeroSmall, t, sx + PDX_LCD_W * 0.5f, yy, lcd, gfx::Center, PDX_LCD_W - 20, false ); };
+		// par "rótulo ........ valor" em uma das duas colunas
+		auto pair = [&]( int col, float yy, const std::wstring& label, const std::wstring& value ){
+			float cx = sx + 8 + col * 116;
+			gfx::Text( Font::ZeroSmall, label, cx, yy, dim, gfx::Left, 0, false );
+			gfx::Text( Font::ZeroSmall, value, cx + 104, yy, lcd, gfx::Right, 0, false );
+		};
+		auto num = []( int v ){ return std::to_wstring( v ); };
+		auto range = []( int a, int b ){ return std::to_wstring( a ) + L"~" + std::to_wstring( b ); };
+
+		if( !pet.valid ){
+			title( g_pdx.page == 0 ? L"ARENA DE PETS" : L"ELEMENTOS", L"" );
+			center( L"Nenhum pet por perto.", sy + PDX_LCD_H * 0.5f - 6 );
+		}else if( g_pdx.page == 0 ){
+			bool ready = ar.valid && ar.job == pet.job;
+			title( L"ARENA DE PETS", ready && ar.accepted ? std::wstring( RankName( ar.rank ) ) : L"" );
+			if( !ready ) center( L"Carregando...", sy + PDX_LCD_H * 0.5f - 6 );
+			else if( !ar.accepted ){
+				center( L"Este pet não participa", sy + PDX_LCD_H * 0.5f - 14 );
+				center( L"da Arena de Pets.", sy + PDX_LCD_H * 0.5f );
+			}else{
+				const float L = 15;
+				float yy = sy + 31;
+				pair( 0, yy, L"Nível", num( ar.level ) );       pair( 1, yy, L"Renasc.", num( ar.rebirths ) ); yy += L;
+				pair( 0, yy, L"MMR", num( ar.mmr ) );           pair( 1, yy, L"Vitórias", num( ar.wins ) );    yy += L;
+				pair( 1, yy, L"No tier", num( ar.tierWins ) );                                                 yy += L + 3;
+				gfx::Rect( sx + 6, yy - 3, PDX_LCD_W - 12, 1, line );
+				pair( 0, yy, L"FOR", num( ar.str ) );           pair( 1, yy, L"AGI", num( ar.agi ) );          yy += L;
+				pair( 0, yy, L"VIT", num( ar.vit ) );           pair( 1, yy, L"INT", num( ar.int_ ) );         yy += L;
+				pair( 0, yy, L"DES", num( ar.dex ) );           pair( 1, yy, L"SOR", num( ar.luk ) );          yy += L + 3;
+				gfx::Rect( sx + 6, yy - 3, PDX_LCD_W - 12, 1, line );
+				pair( 0, yy, L"HP", num( ar.hp ) );             pair( 1, yy, L"ASPD", num( ar.aspd ) );        yy += L;
+				pair( 0, yy, L"ATQ", range( ar.atkMin, ar.atkMax ) ); pair( 1, yy, L"ATQM", range( ar.matkMin, ar.matkMax ) ); yy += L;
+				pair( 0, yy, L"PRE", num( ar.hit ) );           pair( 1, yy, L"ESQ", num( ar.flee ) );         yy += L;
+				pair( 0, yy, L"DEF", num( ar.def ) );           pair( 1, yy, L"DEFM", num( ar.mdef ) );
+			}
+		}else{
+			LoadElements();
+			auto it = g_mobEle.find( pet.job );
+			int ele = it != g_mobEle.end() ? it->second.first : 0, lv = it != g_mobEle.end() ? it->second.second : 1;
+			title( L"ELEMENTOS", ELE_NAME[ele] + std::wstring( L" " ) + std::to_wstring( lv ) );
+			gfx::Rect( sx + PDX_LCD_W - 8 - gfx::TextWidth( Font::ZeroSmall, ELE_NAME[ele] + std::wstring( L" " ) + std::to_wstring( lv ) ) - 12, sy + 10, 8, 8, ELE_COLOR[ele] );
+			// lista "elemento N%" em duas colunas
+			float yy = sy + 30;
+			auto list = [&]( const std::wstring& head, const std::vector<std::pair<int, int>>& items ){
+				gfx::Text( Font::ZeroSmall, head, sx + 8, yy, lcd, gfx::Left, 0, false );
+				yy += 15;
+				if( items.empty() ){ gfx::Text( Font::ZeroSmall, L"Nenhum", sx + 16, yy, dim, gfx::Left, 0, false ); yy += 15; }
+				for( size_t i = 0; i < items.size(); i++ ){
+					float cx = sx + 16 + ( i % 2 ) * 110;
+					gfx::Rect( cx, yy + 3, 8, 8, ELE_COLOR[items[i].first] );
+					gfx::Text( Font::ZeroSmall, std::wstring( ELE_NAME[items[i].first] ) + L" " + std::to_wstring( items[i].second ) + L"%", cx + 12, yy, dim, gfx::Left, 0, false );
+					if( i % 2 == 1 || i + 1 == items.size() ) yy += 14;
+				}
+				yy += 5;
+			};
+			std::vector<std::pair<int, int>> weak, resist, strong;
+			for( int a = 0; a < ELE_N; a++ ){
+				int v = g_attr[lv - 1][a][ele]; // dano que o pet recebe de um ataque do elemento a
+				if( v > 100 ) weak.push_back( { a, v } );
+				else if( v < 100 ) resist.push_back( { a, v } );
+				int o = g_attr[0][ele][a];      // dano do ataque do pet num alvo nível 1 do elemento a
+				if( o > 100 ) strong.push_back( { a, o } );
+			}
+			std::sort( weak.begin(), weak.end(), []( auto& p, auto& q ){ return p.second > q.second; } );
+			std::sort( strong.begin(), strong.end(), []( auto& p, auto& q ){ return p.second > q.second; } );
+			std::sort( resist.begin(), resist.end(), []( auto& p, auto& q ){ return p.second < q.second; } );
+			list( L"Ponto fraco (recebe mais dano):", weak );
+			list( L"Ponto forte (causa mais dano):", strong );
+			list( L"Resistente a (recebe menos):", resist );
+		}
+
+		// setas e botões das páginas
+		struct Btn { float x, y, w, h, r; int local; };
+		const Btn btns[] = {
+			{ PDX_R + 16, 338, 40, 26, 4, P_PREV }, { PDX_R + 62, 338, 40, 26, 4, P_NEXT },
+			{ PDX_R + 16, 384, 116, 32, 5, P_ARENA }, { PDX_R + 140, 384, 116, 32, 5, P_ELEM },
+		};
+		for( const Btn& b : btns ){
+			PdxGlow( x + b.x, y + b.y, b.w, b.h, b.r, hov( b.x, b.y, b.w, b.h ), down );
+			g_pdx.hits.push_back( { x + b.x, y + b.y, b.w, b.h, b.local } );
+		}
+		auto tab = [&]( const wchar_t* t, float bx, bool on ){
+			gfx::TextOutline( Font::ZeroSmall, t, x + bx + 58, y + 393, on ? Rgba( 255, 255, 255, 1.0f ) : Rgba( 255, 230, 200, 1.0f ),
+				on ? Rgba( 120, 50, 10, 1.0f ) : Rgba( 170, 90, 30, 1.0f ), gfx::Center );
+		};
+		tab( L"ARENA", PDX_R + 16, g_pdx.page == 0 );
+		tab( L"ELEMENTOS", PDX_R + 140, g_pdx.page == 1 );
+		// LED da página atual aceso
+		gfx::RoundRect( x + PDX_R + ( g_pdx.page == 0 ? 21 : 41 ), y + 313, 10, 10, 5, Rgba( 255, 255, 255, 0.55f ), g_disc );
+	}
+}
+
 void ui::DrawPokedex( IDirect3DDevice9* dev, float nx, float ny, float nw, float nh ){
 	g_s = 1.0f;
 	gfx::SetUiScale( 1.0f );
@@ -2106,7 +2260,10 @@ void ui::DrawPokedex( IDirect3DDevice9* dev, float nx, float ny, float nw, float
 		gfx::LoadImageFile( dev, config::BaseDir() + L"img\\pokedex.png", g_pokedex );
 	}
 	float x = nx, y = ny;
-	if( GetTickCount() - g_pdx.tick > 1000 && g_pdx.renaming ){ g_pdx.renaming = false; input::SetTextCapture( false ); }
+	if( GetTickCount() - g_pdx.tick > 1000 ){
+		if( g_pdx.renaming ){ g_pdx.renaming = false; input::SetTextCapture( false ); }
+		g_pdx.arenaAsked = 0; // janela reaberta: pede os dados da arena de novo
+	}
 	g_pdx.tick = GetTickCount();
 	g_pdx.x = x; g_pdx.y = y; g_pdx.nx = nx; g_pdx.ny = ny; g_pdx.nw = nw; g_pdx.nh = nh;
 	g_pdx.title = { nx + 60, ny + 6 };
@@ -2150,6 +2307,9 @@ void ui::DrawPokedex( IDirect3DDevice9* dev, float nx, float ny, float nw, float
 					if( pet.renamed ){ g_pdx.notice = L"O nome já foi trocado"; g_pdx.noticeTick = GetTickCount(); }
 					else{ g_pdx.renaming = true; g_pdx.newName.clear(); input::SetTextCapture( true ); }
 					break;
+				case P_PREV: case P_NEXT: g_pdx.page ^= 1; break;
+				case P_ARENA: g_pdx.page = 0; break;
+				case P_ELEM: g_pdx.page = 1; break;
 			}
 		}
 	}
@@ -2216,7 +2376,8 @@ void ui::DrawPokedex( IDirect3DDevice9* dev, float nx, float ny, float nw, float
 	// lente azul = fechar; faixa de cima = arrastar
 	PdxGlow( x + 23, y + 16, 48, 48, 24, hov( 23, 16, 48, 48 ), down );
 	g_pdx.hits.push_back( { x + 23, y + 16, 48, 48, P_CLOSE } );
-	g_pdx.hits.push_back( { x, y, PDX_W, 86, P_TITLE } );
+	g_pdx.hits.push_back( { x, y, PDX_LW, 86, P_TITLE } );
+	DrawPokedexRight( x, y, pet, down );
 	gfx::End();
 }
 
