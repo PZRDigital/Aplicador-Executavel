@@ -67,6 +67,8 @@ namespace gfx {
 	void Circle( float cx, float cy, float radius, D3DCOLOR color );
 	// Retângulo de cantos arredondados (disc = textura de CreateDisc para os cantos)
 	void RoundRect( float x, float y, float w, float h, float r, D3DCOLOR color, const Image& disc );
+	// Ampliação sem suavizar (sprites em pixel art): true até chamar de novo com false (ou End)
+	void SetPointFilter( bool on );
 	void DrawImage( const Image& img, float x, float y, float w, float h, D3DCOLOR color = 0xFFFFFFFF,
 		float u0 = 0.0f, float v0 = 0.0f, float u1 = 1.0f, float v1 = 1.0f );
 

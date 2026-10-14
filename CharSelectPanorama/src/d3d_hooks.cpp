@@ -1049,6 +1049,8 @@ namespace {
 	bool g_hasMenu = false, g_menuDrawn = false;
 	client::WndRect g_questRect;         // janela de quests nativa (escondida embaixo da do Zero)
 	bool g_hasQuest = false, g_questDrawn = false;
+	client::WndRect g_petRect;           // janela de pet nativa (escondida embaixo da Pokédex)
+	bool g_hasPet = false, g_petDrawn = false;
 	bool g_skinFills = false; // dentro do jogo com a skin escura
 	client::WndRect g_basicRect;
 	client::WndRect g_gageRect;     // barra de HP/SP embaixo do personagem (UIPlayerGage)
@@ -1339,7 +1341,7 @@ namespace {
 		// Alt+V recria/redimensiona a barra de status no meio do quadro: janela e retângulo de agora
 		// (senão a nativa aparece por um quadro)
 		g_hasBasic = GameHudOn( config::FEAT_HUD ) && game::BasicInfoRect( g_basicRect );
-		if( ( !g_hasBasic && !g_hasMenu && !g_hasQuest && !g_hasGage && g_partyCount == 0 && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
+		if( ( !g_hasBasic && !g_hasMenu && !g_hasQuest && !g_hasPet && !g_hasGage && g_partyCount == 0 && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
 		if( upData != nullptr ) AccumulateBounds( info, upData, upStride, VertexCount( info.type, info.primCount ) );
 		else BoundsFromStream( dev, info, startVertex );
 		if( !info.hasBounds ) return false;
@@ -1388,6 +1390,19 @@ namespace {
 				}
 				return true;
 			}
+		}
+		// pet: a Pokédex no lugar do primeiro bloco da nativa
+		if( g_hasPet && Within( info, g_petRect, 1.0f ) ){
+			ReadCaller( info );
+			if( g_windowHash != 0 && g_drawHash == g_windowHash ){
+				if( !g_petDrawn ){
+					g_petDrawn = true;
+					ui::DrawPokedex( dev, (float)g_petRect.x, (float)g_petRect.y, (float)g_petRect.w, (float)g_petRect.h );
+				}
+				return true;
+			}
+			if( g_petDrawn ) return FollowCursor( dev, info, upData, upStride );
+			return false;
 		}
 		// quests: a janela do Zero no lugar do primeiro bloco da nativa
 		if( g_hasQuest && Within( info, g_questRect, 1.0f ) ){
@@ -1527,7 +1542,8 @@ namespace {
 	}
 
 	void GameFrameEnd( IDirect3DDevice9* dev ){
-		g_menuDrawn = g_questDrawn = false;
+		g_menuDrawn = g_questDrawn = g_petDrawn = false;
+		g_hasPet = GameHudOn( config::FEAT_PETWND ) && game::PetWindowRect( g_petRect );
 		g_hasQuest = GameHudOn( config::FEAT_QUESTWND ) && game::QuestWindowRect( g_questRect );
 		g_hasMenu = GameHudOn( config::FEAT_MENU ) && game::ReadMenu( g_menu );
 		if( g_hasMenu ){

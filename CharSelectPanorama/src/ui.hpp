@@ -102,6 +102,9 @@ namespace ui {
 	// Janela de quests do Zero (no lugar da CUIRenewQuestUI; x, y = janela nativa)
 	void DrawZeroQuestWindow( IDirect3DDevice9* dev, float nativeX, float nativeY, float nativeW, float nativeH );
 	bool ZeroQuestRedirect( const input::Point& real, input::Point& target );
+	// Pokédex no lugar da janela de pet (UIPetInfoWnd; x, y = janela nativa)
+	void DrawPokedex( IDirect3DDevice9* dev, float nativeX, float nativeY, float nativeW, float nativeH );
+	bool PokedexRedirect( const input::Point& real, input::Point& target );
 	// Barra de HP (e SP) com as imagens no lugar de uma barra nativa (x, y, w, h = janela dela).
 	// down = quanto desce, em alturas de barra
 	void DrawGageBars( IDirect3DDevice9* dev, float x, float y, float w, float h, int hp, int maxHp, int sp, int maxSp, bool withSp, float down );

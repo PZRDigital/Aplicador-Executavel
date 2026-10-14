@@ -13,7 +13,7 @@ namespace embutir {
 	};
 
 	// Alterações (iguais a config::Feature da interface)
-	enum : unsigned { LOGIN = 1, SELECAO = 2, CRIACAO = 4, CHAVE = 8, COMBATE = 16, FADE = 32, STATUS = 64, ITEM = 128, SKIN = 256, EQUIP = 512, INVENTARIO = 1024, HABILIDADES = 2048, MENU = 4096, QUESTS = 8192, TODAS = 0x3EFF };
+	enum : unsigned { LOGIN = 1, SELECAO = 2, CRIACAO = 4, CHAVE = 8, COMBATE = 16, FADE = 32, STATUS = 64, ITEM = 128, SKIN = 256, EQUIP = 512, INVENTARIO = 1024, HABILIDADES = 2048, MENU = 4096, QUESTS = 8192, POKEDEX = 16384, TODAS = 0x7EFF };
 
 	// exe: bytes do executável (entrada); dll: bytes da interface; saida: executável final
 	Resultado Aplicar( const std::vector<unsigned char>& exe, const std::vector<unsigned char>& dll, unsigned alteracoes,

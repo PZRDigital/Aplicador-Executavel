@@ -1643,7 +1643,7 @@ void ui::Draw( IDirect3DDevice9* dev, const NativeFrame& frame ){
 	g_hasLayout = true;
 }
 
-namespace { void ReleaseQuestImages(); }
+namespace { void ReleaseQuestImages(); void ReleasePokedexImages(); }
 
 void ui::OnDeviceLost(){
 	gfx::Release( g_logo );
@@ -1664,6 +1664,7 @@ void ui::OnDeviceLost(){
 	for( auto& kv : g_zeroMenu ) gfx::Release( kv.second );
 	g_zeroMenu.clear();
 	ReleaseQuestImages();
+	ReleasePokedexImages();
 	gfx::OnDeviceLost();
 }
 
@@ -2018,6 +2019,224 @@ bool ui::ZeroQuestRedirect( const input::Point& real, input::Point& target ){
 	return true;
 }
 
+// ======================================================================== Pokédex (janela de pet)
+namespace {
+	void GameAssets( IDirect3DDevice9* dev ); // logo, brilho, engrenagem e disco (mais abaixo)
+
+	// img\pokedex.png (tools\pokedex.py, 287x490); posições iguais às do script
+	constexpr float PDX_W = 287, PDX_H = 490;
+	constexpr float PDX_SCR_X = 46, PDX_SCR_Y = 109, PDX_SCR_W = 208, PDX_SCR_H = 206;
+	struct PetAnim { int frames = 0, w = 0, h = 0, ms = 100; gfx::Image strip; bool tried = false; };
+	std::map<int, PetAnim> g_petAnims;
+	std::map<int, std::string> g_petAnimInfo; // classe -> "quadros,l,a,ms" (pets_anim.txt)
+	bool g_petInfoLoaded = false;
+	gfx::Image g_pokedex;
+	bool g_pokedexTried = false;
+
+	enum PLocal { P_NONE = 0, P_FEED, P_TRICK, P_EGG, P_ACC, P_RENAME, P_CLOSE, P_TITLE };
+	struct PHit { float x, y, w, h; int local; };
+	struct {
+		std::vector<PHit> hits;
+		float x = 0, y = 0, nx = 0, ny = 0, nw = 0, nh = 0;
+		input::Point title, close, neutral;
+		bool prevDown = false, renaming = false;
+		std::wstring newName;
+		std::wstring notice;
+		DWORD noticeTick = 0, tick = 0;
+	} g_pdx;
+
+	void ReleasePokedexImages(){
+		gfx::Release( g_pokedex );
+		g_pokedexTried = false;
+		for( auto& kv : g_petAnims ){ gfx::Release( kv.second.strip ); kv.second.tried = false; }
+	}
+
+	PetAnim* LoadPetAnim( IDirect3DDevice9* dev, int job ){
+		if( !g_petInfoLoaded ){
+			g_petInfoLoaded = true;
+			std::vector<unsigned char> data;
+			if( vfs::Read( config::BaseDir() + L"pets_anim.txt", data ) ){
+				std::string all( data.begin(), data.end() );
+				for( size_t p = 0; p < all.size(); ){
+					size_t e = all.find( '\n', p );
+					if( e == std::string::npos ) e = all.size();
+					std::string l = all.substr( p, e - p );
+					p = e + 1;
+					size_t eq = l.find( '=' );
+					if( l.empty() || l[0] == ';' || eq == std::string::npos ) continue;
+					g_petAnimInfo[atoi( l.c_str() )] = l.substr( eq + 1 );
+				}
+			}
+		}
+		PetAnim& a = g_petAnims[job];
+		if( !a.tried ){
+			a.tried = true;
+			auto it = g_petAnimInfo.find( job );
+			if( it != g_petAnimInfo.end() && sscanf_s( it->second.c_str(), "%d,%d,%d,%d", &a.frames, &a.w, &a.h, &a.ms ) == 4 ){
+				gfx::LoadImageFile( dev, config::BaseDir() + L"img\\pet\\anim\\" + std::to_wstring( job ) + L".png", a.strip );
+			}
+		}
+		return a.strip.tex && a.frames > 0 ? &a : nullptr;
+	}
+
+	const wchar_t* HungerText( int h ){
+		return h <= 10 ? L"Muito faminto" : h <= 25 ? L"Faminto" : h <= 75 ? L"Normal" : h <= 90 ? L"Satisfeito" : L"Cheio";
+	}
+	const wchar_t* LoyaltyText( int i ){
+		return i <= 100 ? L"Estranho" : i <= 250 ? L"Tímido" : i <= 750 ? L"Neutro" : i <= 910 ? L"Cordial" : L"Leal";
+	}
+
+	// realce do controle sob o mouse (apertado = mais escuro)
+	void PdxGlow( float x, float y, float w, float h, float r, bool hover, bool down ){
+		if( hover ) gfx::RoundRect( x, y, w, h, r, down ? Rgba( 0, 0, 0, 0.25f ) : Rgba( 255, 255, 255, 0.28f ), g_disc );
+	}
+
+	void PdxLabel( const std::wstring& t, float x, float y, int align = gfx::Center ){
+		gfx::TextOutline( Font::ZeroSmall, t, x, y, Rgba( 255, 255, 255, 1.0f ), Rgba( 110, 15, 20, 1.0f ), align );
+	}
+}
+
+void ui::DrawPokedex( IDirect3DDevice9* dev, float nx, float ny, float nw, float nh ){
+	g_s = 1.0f;
+	gfx::SetUiScale( 1.0f );
+	if( !gfx::Begin( dev ) ) return;
+	GameAssets( dev );
+	if( !g_pokedexTried ){
+		g_pokedexTried = true;
+		gfx::LoadImageFile( dev, config::BaseDir() + L"img\\pokedex.png", g_pokedex );
+	}
+	float x = nx, y = ny;
+	if( GetTickCount() - g_pdx.tick > 1000 && g_pdx.renaming ){ g_pdx.renaming = false; input::SetTextCapture( false ); }
+	g_pdx.tick = GetTickCount();
+	g_pdx.x = x; g_pdx.y = y; g_pdx.nx = nx; g_pdx.ny = ny; g_pdx.nw = nw; g_pdx.nh = nh;
+	g_pdx.title = { nx + 60, ny + 6 };
+	g_pdx.neutral = { nx + nw - 40, ny + nh - 10 };
+	client::WndRect cr;
+	g_pdx.close = game::PetCloseRect( cr ) ? input::Point{ cr.x + cr.w * 0.5f, cr.y + cr.h * 0.5f } : input::Point{ nx + nw - 9, ny + 7 };
+	game::Pet pet = game::CurrentPet();
+	input::Point m = input::RealCursor();
+	bool down = input::IsLeftDown();
+
+	// renomear: texto digitado (Enter envia, Esc cancela)
+	if( g_pdx.renaming ){
+		for( wchar_t c : input::TakeTyped() ){
+			if( c == L'\b' ){ if( !g_pdx.newName.empty() ) g_pdx.newName.pop_back(); }
+			else if( c == 27 ){ g_pdx.renaming = false; input::SetTextCapture( false ); }
+			else if( c == 13 ){
+				g_pdx.renaming = false;
+				input::SetTextCapture( false );
+				if( !g_pdx.newName.empty() ){
+					int n = WideCharToMultiByte( config::Get().codepage, 0, g_pdx.newName.c_str(), (int)g_pdx.newName.size(), nullptr, 0, nullptr, nullptr );
+					std::string s( n, '\0' );
+					WideCharToMultiByte( config::Get().codepage, 0, g_pdx.newName.c_str(), (int)g_pdx.newName.size(), &s[0], n, nullptr, nullptr );
+					game::RenamePet( s );
+				}
+			}else if( c >= 32 && g_pdx.newName.size() < 23 ) g_pdx.newName += c;
+		}
+	}
+	// cliques (ao soltar)
+	if( g_pdx.prevDown && !down ){
+		for( const PHit& h : g_pdx.hits ){
+			if( !Inside( m, h.x, h.y, h.w, h.h ) ) continue;
+			switch( h.local ){
+				case P_FEED: game::PetCommand( 1 ); break;
+				case P_TRICK: game::PetCommand( 2 ); break;
+				case P_EGG: game::PetCommand( 3 ); break;
+				case P_ACC:
+					if( pet.accessory > 0 ) game::PetCommand( 4 );
+					else{ g_pdx.notice = L"Sem acessório"; g_pdx.noticeTick = GetTickCount(); }
+					break;
+				case P_RENAME:
+					if( pet.renamed ){ g_pdx.notice = L"O nome já foi trocado"; g_pdx.noticeTick = GetTickCount(); }
+					else{ g_pdx.renaming = true; g_pdx.newName.clear(); input::SetTextCapture( true ); }
+					break;
+			}
+		}
+	}
+	g_pdx.prevDown = down;
+	g_pdx.hits.clear();
+
+	if( g_pokedex.tex ) gfx::DrawImage( g_pokedex, x, y, PDX_W, PDX_H );
+	auto hov = [&]( float hx, float hy, float hw, float hh ){ return Hovered( x + hx, y + hy, hw, hh ); };
+
+	// tela: nome e nível em cima, o pet animado no meio
+	float sx = x + PDX_SCR_X, sy = y + PDX_SCR_Y;
+	if( pet.valid ){
+		std::wstring name = CodepageText( pet.name );
+		gfx::TextOutline( Font::ZeroName, name, sx + 8, sy + 6, Rgba( 255, 255, 255, 1.0f ), Rgba( 30, 30, 34, 1.0f ) );
+		gfx::TextOutline( Font::ZeroSmall, L"Nv. " + std::to_wstring( pet.level ), sx + PDX_SCR_W - 8, sy + 8, Rgba( 255, 230, 120, 1.0f ), Rgba( 30, 30, 34, 1.0f ), gfx::Right );
+		if( PetAnim* a = LoadPetAnim( dev, pet.job ) ){
+			int f = (int)( GetTickCount() / (DWORD)std::max( 30, a->ms ) % (DWORD)a->frames );
+			float areaH = PDX_SCR_H - 34, areaW = PDX_SCR_W - 16;
+			float k = std::min( { 2.0f, areaW / a->w, areaH / a->h } ); // até 2x, cabendo na tela (pixel nítido)
+			float dw = a->w * k, dh = a->h * k;
+			float u0 = f / (float)a->frames, u1 = ( f + 1 ) / (float)a->frames;
+			gfx::SetPointFilter( true );
+			gfx::DrawImage( a->strip, floorf( sx + ( PDX_SCR_W - dw ) * 0.5f ), floorf( sy + 26 + ( areaH - dh ) * 0.5f ), dw, dh, 0xFFFFFFFF, u0, 0.0f, u1, 1.0f );
+			gfx::SetPointFilter( false );
+		}
+		if( g_pdx.renaming ){
+			gfx::Rect( sx + 10, sy + PDX_SCR_H - 46, PDX_SCR_W - 20, 36, Rgba( 20, 20, 24, 0.85f ) );
+			gfx::Text( Font::ZeroSmall, L"Novo nome (Enter confirma, Esc cancela):", sx + 16, sy + PDX_SCR_H - 42, Rgba( 200, 200, 200, 1.0f ), gfx::Left, PDX_SCR_W - 30, false );
+			gfx::Text( Font::ZeroName, g_pdx.newName + ( ( GetTickCount() / 500 ) % 2 ? L"|" : L"" ), sx + 16, sy + PDX_SCR_H - 27, Rgba( 255, 255, 255, 1.0f ), gfx::Left, PDX_SCR_W - 30, false );
+		}else if( !g_pdx.notice.empty() && GetTickCount() - g_pdx.noticeTick < 2500 ){
+			gfx::TextOutline( Font::ZeroSmall, g_pdx.notice, sx + PDX_SCR_W * 0.5f, sy + PDX_SCR_H - 20, Rgba( 255, 200, 120, 1.0f ), Rgba( 30, 30, 34, 1.0f ), gfx::Center );
+		}
+	}else{
+		gfx::Text( Font::ZeroSmall, L"Nenhum pet por perto.", sx + PDX_SCR_W * 0.5f, sy + PDX_SCR_H * 0.5f - 6, Rgba( 210, 210, 210, 1.0f ), gfx::Center, 0, false );
+	}
+
+	// visor verde: fome e lealdade
+	if( pet.valid ){
+		const D3DCOLOR lcd = Rgba( 18, 70, 28, 1.0f );
+		gfx::Text( Font::ZeroSmall, L"Fome: " + std::wstring( HungerText( pet.hunger ) ), x + 80, y + 413, lcd, gfx::Left, 94, false );
+		gfx::Text( Font::ZeroSmall, L"Lealdade: " + std::wstring( LoyaltyText( pet.intimacy ) ), x + 80, y + 428, lcd, gfx::Left, 94, false );
+		gfx::Rect( x + 80, y + 446, 92, 6, Rgba( 30, 110, 45, 1.0f ) );
+		gfx::Rect( x + 80, y + 446, 92 * std::min( 1.0f, std::max( 0.0f, pet.intimacy / 1000.0f ) ), 6, lcd );
+	}
+
+	// controles
+	struct Ctl { float x, y, w, h, r; int local; const wchar_t* label; float lx, ly; int align; };
+	const Ctl ctls[] = {
+		{ 72, 379, 48, 14, 7, P_FEED, L"Alimentar", 96, 363, gfx::Center },
+		{ 130, 379, 48, 14, 7, P_TRICK, L"Truque", 154, 363, gfx::Center },
+		{ 26, 369, 38, 38, 19, P_EGG, L"Ovo", 45, 409, gfx::Center },
+		{ 199, 381, 68, 68, 8, P_ACC, L"Acessório", 233, 452, gfx::Center },
+		{ 61, 324, 26, 26, 13, P_RENAME, L"Renomear", 92, 331, gfx::Left },
+	};
+	for( const Ctl& c : ctls ){
+		bool h = hov( c.x, c.y, c.w, c.h ) && pet.valid;
+		PdxGlow( x + c.x, y + c.y, c.w, c.h, c.r, h, down );
+		if( pet.valid ){
+			if( c.local == P_RENAME ) gfx::TextOutline( Font::ZeroSmall, c.label, x + c.lx, y + c.ly, Rgba( 90, 90, 95, 1.0f ), Rgba( 240, 240, 240, 1.0f ) );
+			else PdxLabel( c.label, x + c.lx, y + c.ly, c.align );
+			g_pdx.hits.push_back( { x + c.x, y + c.y, c.w, c.h, c.local } );
+		}
+	}
+	// lente azul = fechar; faixa de cima = arrastar
+	PdxGlow( x + 23, y + 16, 48, 48, 24, hov( 23, 16, 48, 48 ), down );
+	g_pdx.hits.push_back( { x + 23, y + 16, 48, 48, P_CLOSE } );
+	g_pdx.hits.push_back( { x, y, PDX_W, 86, P_TITLE } );
+	gfx::End();
+}
+
+bool ui::PokedexRedirect( const input::Point& real, input::Point& target ){
+	if( GetTickCount() - g_pdx.tick > 250 ) return false;
+	if( !Inside( real, g_pdx.x, g_pdx.y, PDX_W, PDX_H ) ){
+		if( !Inside( real, g_pdx.nx, g_pdx.ny, g_pdx.nw, g_pdx.nh ) ) return false;
+		target = g_pdx.neutral;
+		return true;
+	}
+	for( const PHit& h : g_pdx.hits ){
+		if( !Inside( real, h.x, h.y, h.w, h.h ) ) continue;
+		if( h.local == P_CLOSE ){ target = g_pdx.close; return true; }
+		if( h.local == P_TITLE ){ target = { g_pdx.title.x + ( real.x - h.x ) * 0.25f, g_pdx.title.y }; return true; }
+		break;
+	}
+	target = g_pdx.neutral;
+	return true;
+}
+
 namespace { bool GameWindowsRedirect( const input::Point& real, input::Point& target ); }
 
 bool ui::Redirect( const input::Point& real, input::Point& target ){
@@ -2027,6 +2246,7 @@ bool ui::Redirect( const input::Point& real, input::Point& target ){
 		if( client::InGame() && game::BasicInfoRect( br ) && StatusHudRedirect( real, target, (float)br.x, (float)br.y ) ) return true;
 		if( client::InGame() && ZeroMenuRedirect( real, target ) ) return true;
 		if( client::InGame() && ZeroQuestRedirect( real, target ) ) return true;
+		if( client::InGame() && PokedexRedirect( real, target ) ) return true;
 	}
 	if( !config::CustomActive() ){
 		return false;

@@ -135,6 +135,7 @@ namespace config {
 		FEAT_SKILLWND = 2048, // habilidades novas
 		FEAT_MENU = 4096,     // menu de ícones do Ragnarok Zero
 		FEAT_QUESTWND = 8192, // janela de quests do Ragnarok Zero
+		FEAT_PETWND = 16384,  // Pokédex no lugar da janela de pet (Alt+J)
 	};
 	bool Feature( unsigned f );
 	void SetCustomActive( bool on );

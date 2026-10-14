@@ -4,6 +4,7 @@
 
 #include <windows.h>
 #include <cstring>
+#include <algorithm>
 #include <map>
 #include <mutex>
 #include <unordered_map>
@@ -109,6 +110,7 @@ namespace {
 	}
 
 	std::map<int, game::Quest> g_quests;
+	game::Pet g_pet;
 
 	game::QuestObjective* FindHunt( uint32_t hunt ){
 		auto q = g_quests.find( (int)( hunt / 1000 ) );
@@ -292,6 +294,26 @@ namespace {
 				if( len >= 7 ){
 					auto q = g_quests.find( (int)Rd<uint32_t>( b, 2 ) );
 					if( q != g_quests.end() ) q->second.state = b[6] ? 1 : 0;
+				}
+				break;
+			case 0x01A2: // ZC_PROPERTY_PET: nome[24], renomeado, nível, fome, intimidade, acessório, classe
+				if( len >= 35 ){
+					g_pet.valid = true;
+					g_pet.name.assign( reinterpret_cast<const char*>( b + 2 ), strnlen( reinterpret_cast<const char*>( b + 2 ), 24 ) );
+					g_pet.renamed = b[26] != 0;
+					g_pet.level = Rd<int16_t>( b, 27 );
+					g_pet.hunger = Rd<int16_t>( b, 29 );
+					g_pet.intimacy = Rd<int16_t>( b, 31 );
+					g_pet.accessory = Rd<uint16_t>( b, 33 );
+					g_pet.job = len >= 37 ? Rd<uint16_t>( b, 35 ) : 0;
+				}
+				break;
+			case 0x01A4: // ZC_CHANGESTATE_PET: tipo, GID, valor (1 intimidade, 2 fome, 3 acessório)
+				if( len >= 11 ){
+					int v = Rd<int32_t>( b, 7 );
+					if( b[2] == 1 ) g_pet.intimacy = v;
+					else if( b[2] == 2 ) g_pet.hunger = v;
+					else if( b[2] == 3 ) g_pet.accessory = v;
 				}
 				break;
 			case 0x02D9: // ZC_CONFIG: tipo, valor
@@ -804,6 +826,50 @@ bool game::QuestCloseRect( client::WndRect& r ){
 		if( !Peek( node, node ) ) break;
 	}
 	return false;
+}
+
+game::Pet game::CurrentPet(){
+	std::lock_guard<std::mutex> g( g_lock );
+	return g_pet;
+}
+
+void game::PetCommand( int command ){
+	uint8_t p[3] = { 0xA1, 0x01, (uint8_t)command };
+	SendPacket( p, sizeof( p ) );
+}
+
+void game::RenamePet( const std::string& name ){
+	uint8_t p[26] = { 0xA5, 0x01 };
+	memcpy( p + 2, name.data(), std::min<size_t>( name.size(), 23 ) );
+	SendPacket( p, sizeof( p ) );
+}
+
+namespace {
+	constexpr uintptr_t VT_PETINFO = 0x10109F0; // UIPetInfoWnd
+
+	bool CloseButtonOf( uintptr_t w, client::WndRect& r ){
+		client::WndRect wr;
+		if( w == 0 || !WindowRect( w, wr ) ) return false;
+		uintptr_t head = 0, node = 0;
+		if( !Peek( w + OFS_CHILDREN, head ) || head == 0 || !Peek( head, node ) ) return false;
+		for( int i = 0; i < 64 && node != 0 && node != head; i++ ){
+			uintptr_t child = 0;
+			std::string image;
+			if( Peek( node + 8, child ) && ReadStdString( child + OFS_BUTTON_IMAGE, image ) && image.find( "close" ) != std::string::npos
+				&& ChildRect( child, wr, r ) ) return true;
+			if( !Peek( node, node ) ) break;
+		}
+		return false;
+	}
+}
+
+bool game::PetWindowRect( client::WndRect& r ){
+	uintptr_t w = g_sessionOk ? OpenWindow( VT_PETINFO ) : 0;
+	return w != 0 && WindowRect( w, r );
+}
+
+bool game::PetCloseRect( client::WndRect& r ){
+	return g_sessionOk && CloseButtonOf( OpenWindow( VT_PETINFO ), r );
 }
 
 bool game::MenuRect( client::WndRect& r ){

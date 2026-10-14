@@ -100,6 +100,20 @@ namespace game {
 	};
 	std::vector<Quest> Quests();
 	void SetQuestActive( int id, bool active ); // CZ_ACTIVE_QUEST
+	// Pet chocado (ZC_PROPERTY_PET 0x01A2 e ZC_CHANGESTATE_PET 0x01A4)
+	struct Pet {
+		bool valid = false;
+		std::string name;        // codepage do cliente
+		bool renamed = false;    // já trocou o nome (não pode de novo)
+		int level = 0, hunger = 0, intimacy = 0, accessory = 0, job = 0;
+	};
+	Pet CurrentPet();
+	void PetCommand( int command );            // CZ_COMMAND_PET: 1 alimentar, 2 truque, 3 voltar ao ovo, 4 tirar acessório
+	void RenamePet( const std::string& name ); // CZ_RENAME_PET (codepage do cliente)
+	// Janela de pet nativa (UIPetInfoWnd, Alt+J) e o botão de fechar dela
+	bool PetWindowRect( client::WndRect& out );
+	bool PetCloseRect( client::WndRect& out );
+
 	// Janela de quests nativa (CUIRenewQuestUI) e o botão de fechar dela
 	bool QuestWindowRect( client::WndRect& out );  // aberta (lista de janelas do gerenciador)
 	bool QuestCloseRect( client::WndRect& out );

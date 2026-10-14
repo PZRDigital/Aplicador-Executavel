@@ -595,6 +595,12 @@ void gfx::Circle( float cx, float cy, float radius, D3DCOLOR color ){
 	}
 }
 
+void gfx::SetPointFilter( bool on ){
+	if( g_dev == nullptr ) return;
+	g_dev->SetSamplerState( 0, D3DSAMP_MINFILTER, on ? D3DTEXF_POINT : D3DTEXF_LINEAR );
+	g_dev->SetSamplerState( 0, D3DSAMP_MAGFILTER, on ? D3DTEXF_POINT : D3DTEXF_LINEAR );
+}
+
 void gfx::DrawImage( const Image& img, float x, float y, float w, float h, D3DCOLOR color, float u0, float v0, float u1, float v1 ){
 	if( img.tex == nullptr ){
 		return;

@@ -55,6 +55,7 @@ namespace {
 		{ embutir::HABILIDADES, L"Habilidades", L"Alt+S em árvore por classe", true, nullptr },
 		{ embutir::MENU, L"Menu", L"Menu de ícones do Ragnarok Zero", true, nullptr },
 		{ embutir::QUESTS, L"Quests", L"Alt+U no estilo do Ragnarok Zero", true, nullptr },
+		{ embutir::POKEDEX, L"Pokédex", L"Alt+J (pet) como Pokédex, com o pet animado", true, nullptr },
 	};
 	const int N_OPCOES = sizeof( g_opcoes ) / sizeof( g_opcoes[0] );
 
@@ -556,11 +557,11 @@ int WINAPI wWinMain( HINSTANCE inst, HINSTANCE, LPWSTR, int show ){
 		for( int i = 2; i < argc; i++ ){
 			if( _wcsicmp( argv[i], L"/semgrf" ) == 0 ) grf = false;
 			if( _wcsnicmp( argv[i], L"/alteracoes=", 12 ) == 0 ){
-				// ex.: /alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests
+				// ex.: /alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests,pokedex
 				std::wstring v = argv[i] + 12;
 				alt = 0;
-				const wchar_t* nomes[] = { L"login", L"selecao", L"criacao", L"chave", L"combate", L"fade", L"status", L"item", L"", L"equip", L"inventario", L"habilidades", L"menu", L"quests" };
-				for( int k = 0; k < 14; k++ ) if( nomes[k][0] ) if( v.find( nomes[k] ) != std::wstring::npos ) alt |= 1u << k;
+				const wchar_t* nomes[] = { L"login", L"selecao", L"criacao", L"chave", L"combate", L"fade", L"status", L"item", L"", L"equip", L"inventario", L"habilidades", L"menu", L"quests", L"pokedex" };
+				for( int k = 0; k < 15; k++ ) if( nomes[k][0] ) if( v.find( nomes[k] ) != std::wstring::npos ) alt |= 1u << k;
 			}
 		}
 		_wfopen_s( &g_arqLog, ( PastaDoApp() + L"aplicador.log" ).c_str(), L"w, ccs=UTF-8" );
