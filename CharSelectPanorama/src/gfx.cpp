@@ -42,6 +42,7 @@ namespace {
 		{ L"Inter", L"Segoe UI", 17, FW_BOLD },     // Name
 		{ L"Tahoma", L"Arial", 11, FW_NORMAL, NONANTIALIASED_QUALITY }, // ZeroSmall
 		{ L"Tahoma", L"Arial", 13, FW_BOLD, NONANTIALIASED_QUALITY },   // ZeroName
+		{ L"Tahoma", L"Arial", 12, FW_NORMAL, NONANTIALIASED_QUALITY }, // ZeroMedium
 	};
 
 	struct TextEntry {

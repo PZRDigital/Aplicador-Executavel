@@ -23,6 +23,7 @@ namespace gfx {
 		Name,       // Inter bold grande, nomes na lista
 		ZeroSmall,  // Tahoma 11 sem suavização (textos da interface do Ragnarok Zero)
 		ZeroName,   // Tahoma 13 negrito sem suavização (nome na barra de status do Zero)
+		ZeroMedium, // Tahoma 12 sem suavização (nome do mapa)
 		COUNT
 	};
 

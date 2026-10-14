@@ -641,6 +641,16 @@ namespace {
 	}
 }
 
+std::string game::CurrentMap(){
+	constexpr uintptr_t S_MAP = 0x15D470C; // char[16] da sessão (0x44 antes do nível de base, como no cliente Zero)
+	char name[17] = {};
+	if( !g_sessionOk ) return {};
+	for( int i = 0; i < 16; i++ ) if( !Peek( S_MAP + i, name[i] ) ) return {};
+	std::string s( name, strnlen( name, 16 ) );
+	size_t dot = s.find( '.' );
+	return dot == std::string::npos ? s : s.substr( 0, dot );
+}
+
 bool game::ReadMenu( MenuState& m ){
 	uintptr_t w = g_sessionOk ? MenuWindow() : 0;
 	g_menuWnd = w;

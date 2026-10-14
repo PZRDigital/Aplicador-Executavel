@@ -13,16 +13,17 @@ from grf import Vfs
 COR = ( 40, 60, 101 )
 FONTE = '/mnt/c/Windows/Fonts/tahomabd.ttf'
 COLUNAS = ( 5, 107, 193 )
+# nomes curtos: os valores (alinhados à direita) chegam perto dos nomes com níveis altos
 # linhas: topo das letras em 7 + 16 * linha; a expandida tem o 2º bloco a partir de 128
 BASICOS = [
     ( 0, 0, 'For' ), ( 0, 1, 'Agi' ), ( 0, 2, 'Vit' ), ( 0, 3, 'Int' ), ( 0, 4, 'Des' ), ( 0, 5, 'Sor' ),
-    ( 1, 0, 'Atq' ), ( 1, 1, 'Atq M' ), ( 1, 2, 'Precisão' ), ( 1, 3, 'Crítico' ), ( 1, 4, 'Pts de Atributo' ), ( 1, 5, 'Clã' ),
-    ( 2, 0, 'Def' ), ( 2, 1, 'Def M' ), ( 2, 2, 'Esquiva' ), ( 2, 3, 'Vel. Atq' ),
+    ( 1, 0, 'Atq' ), ( 1, 1, 'AtqM' ), ( 1, 2, 'Prec.' ), ( 1, 3, 'Crít.' ), ( 1, 4, 'Pts de Atributo' ), ( 1, 5, 'Clã' ),
+    ( 2, 0, 'Def' ), ( 2, 1, 'DefM' ), ( 2, 2, 'Esq.' ), ( 2, 3, 'Vel.Atq' ),
 ]
 TALENTOS = [
     ( 0, 0, 'Pow' ), ( 0, 1, 'Sta' ), ( 0, 2, 'Wis' ), ( 0, 3, 'Spl' ), ( 0, 4, 'Con' ), ( 0, 5, 'Crt' ),
-    ( 1, 0, 'P.Atq' ), ( 1, 1, 'S.Atq M' ), ( 1, 2, 'Cura +' ), ( 1, 3, 'Tx. Crít.' ), ( 1, 4, 'Pts de Talento' ),
-    ( 2, 0, 'Res' ), ( 2, 1, 'Res M' ),
+    ( 1, 0, 'P.Atq' ), ( 1, 1, 'S.AtqM' ), ( 1, 2, 'Cura +' ), ( 1, 3, 'Tx. Crít.' ), ( 1, 4, 'Pts de Talento' ),
+    ( 2, 0, 'Res' ), ( 2, 1, 'ResM' ),
 ]
 
 

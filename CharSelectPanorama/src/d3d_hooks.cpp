@@ -1479,6 +1479,8 @@ namespace {
 					D3DVIEWPORT9 vp;
 					dev->GetViewport( &vp );
 					ui::DrawExpBar( dev, (float)vp.Width, (float)vp.Height, st );
+					std::string map = game::CurrentMap();
+					if( !map.empty() ) ui::DrawZeroMapName( dev, (float)vp.Width, chardata::MapName( map ) );
 					ui::DrawStatusHud( dev, (float)g_basicRect.x, (float)g_basicRect.y, st );
 				}
 			}

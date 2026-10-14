@@ -83,6 +83,7 @@ namespace game {
 		client::WndRect rect, toggle;
 		std::vector<MenuButton> icons;
 	};
+	std::string CurrentMap(); // mapa atual ("prontera"); vazio fora do jogo
 	bool ReadMenu( MenuState& out );
 	bool MenuRect( client::WndRect& out ); // retângulo atual da janela lida por ReadMenu
 	void PlaceMenu( int x, int y ); // move a janela nativa (os filhos acompanham)

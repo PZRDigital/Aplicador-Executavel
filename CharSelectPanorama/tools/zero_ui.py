@@ -14,6 +14,7 @@ ARQUIVOS = [
     'basicinfo/gze_bg.bmp', 'basicinfo/gze_hp_normal.bmp', 'basicinfo/gze_hp_damage.bmp',
     'basicinfo/gze_hp_damage_deco.bmp', 'basicinfo/gze_hp_deco.bmp', 'basicinfo/gze_sp_normal.bmp',
     'expbar/bg_exp_base.tga', 'expbar/bg_exp_job.tga', 'expbar/gze_exp_base.bmp', 'expbar/gze_exp_job.bmp',
+    'mapname/bg_fieldname.bmp',
 ]
 
 # Menu de ícones (UIMenuIconWnd do tema novo): fundo, botão MENU e cada ícone em 3 estados
