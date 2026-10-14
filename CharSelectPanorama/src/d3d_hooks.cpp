@@ -1409,7 +1409,11 @@ namespace {
 			D3DVIEWPORT9 vp;
 			dev->GetViewport( &vp );
 			float ty = real.y - BUFF_SHIFT;
-			if( hover && info.minX < vp.Width - 52.0f && info.minX >= vp.Width - 420.0f && info.maxX <= vp.Width - 40.0f
+			// (só peças com transparência: o cenário também é desenhado em blocos opacos nessa faixa e não pode descer)
+			DWORD blend = 0;
+			if( hover ) dev->GetRenderState( D3DRS_ALPHABLENDENABLE, &blend );
+			if( hover && blend && info.Width() <= 220.0f && info.Height() <= 200.0f && info.minX >= real.x - 260.0f
+				&& info.minX < vp.Width - 52.0f && info.maxX <= vp.Width - 40.0f
 				&& info.minY >= ty - 15.0f && info.maxY <= ty + 220.0f ){
 				DrawTransformed( dev, info, upData, upStride, 0, 0, 0.0f, BUFF_SHIFT, 1.0f, false );
 				return true;
@@ -2056,10 +2060,11 @@ void d3dhooks::OnDirect3DCreated( IDirect3D9* d3d, bool isEx ){
 	}
 }
 
-bool d3dhooks::BuffIconAt( float x, float y, float& shiftY ){
+bool d3dhooks::BuffRedirect( float x, float y, float& tx, float& ty ){
 	std::lock_guard<std::mutex> g( g_buffLock );
+	if( BuffHit( x, y ) ){ tx = x; ty = y - BUFF_SHIFT; return true; }
 	for( const BuffRect& r : g_buffRectsPrev ){
-		if( x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1 ){ shiftY = BUFF_SHIFT; return true; }
+		if( x >= r.x0 && x < r.x1 && y >= r.y0 - BUFF_SHIFT && y < r.y1 - BUFF_SHIFT ){ tx = r.x0 - 12.0f; ty = y; return true; }
 	}
 	return false;
 }

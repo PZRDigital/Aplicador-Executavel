@@ -2405,8 +2405,8 @@ bool ui::Redirect( const input::Point& real, input::Point& target ){
 	if( GameWindowsRedirect( real, target ) ) return true;
 	{
 		// ícones de buff que descemos (abaixo do nome do mapa): o cliente ainda testa o mouse no lugar original
-		float dy;
-		if( client::InGame() && d3dhooks::BuffIconAt( real.x, real.y, dy ) ){ target = { real.x, real.y - dy }; return true; }
+		float tx, ty;
+		if( client::InGame() && d3dhooks::BuffRedirect( real.x, real.y, tx, ty ) ){ target = { tx, ty }; return true; }
 	}
 	{
 		client::WndRect br;
