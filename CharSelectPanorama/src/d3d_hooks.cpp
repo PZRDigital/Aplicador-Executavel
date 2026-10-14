@@ -1065,6 +1065,16 @@ namespace {
 		ui::DrawZeroMenu( dev, g_menu, (float)vp.Width, (float)vp.Height );
 	}
 
+	constexpr float BUFF_SHIFT = 30.0f; // quanto os ícones de buff descem (abaixo do nome do mapa)
+	constexpr float QUEST_W = 592, QUEST_H = 435, POKEDEX_W = 287, POKEDEX_H = 490;
+
+	// a barra do personagem é desenhada depois das janelas: some onde a janela de quests/Pokédex está
+	bool GageCovered( const client::WndRect& g ){
+		float cx = g.x + g.w * 0.5f, cy = g.y + g.h * 0.5f;
+		auto in = [&]( const client::WndRect& r, float w, float h ){ return cx >= r.x && cx < r.x + std::max( (float)r.w, w ) && cy >= r.y && cy < r.y + std::max( (float)r.h, h ); };
+		return ( g_hasQuest && in( g_questRect, QUEST_W, QUEST_H ) ) || ( g_hasPet && in( g_petRect, POKEDEX_W, POKEDEX_H ) );
+	}
+
 	void DrawPlayerGage( IDirect3DDevice9* dev ){
 		game::Status st;
 		if( game::ReadStatus( st ) ){
@@ -1346,9 +1356,37 @@ namespace {
 		else BoundsFromStream( dev, info, startVertex );
 		if( !info.hasBounds ) return false;
 		if( g_hasMenu ) game::MenuRect( g_menu.rect ); // o menu muda de tamanho ao abrir/fechar
+		// cursor do cliente sobre a janela de quests/Pokédex: o clique vai para um ponto da nativa,
+		// o cursor desenhado volta para onde o mouse realmente está (mesmo fora do retângulo da nativa)
+		if( ( g_questDrawn || g_petDrawn ) && upData != nullptr ){
+			input::Point off = input::CursorOffset();
+			if( off.x != 0.0f || off.y != 0.0f ){
+				input::Point real = input::RealCursor();
+				float rx = real.x - off.x, ry = real.y - off.y;
+				ReadCaller( info );
+				// todas as camadas do cursor (aprendido no login); sem ele, o que estiver junto do ponto informado
+				bool cursor = g_cursorHash != 0 ? g_drawHash == g_cursorHash
+					: info.minX >= rx - 40 && info.maxX <= rx + 48 && info.minY >= ry - 40 && info.maxY <= ry + 48 && info.Width() <= 48 && info.Height() <= 48;
+				if( cursor ){
+					DrawTransformed( dev, info, upData, upStride, 0, 0, off.x, off.y, 1.0f, false );
+					return true;
+				}
+			}
+		}
+		// ícones de buff na coluna da direita: descem para não cobrir o nome do mapa (embaixo do minimapa)
+		// (32x32 em x = largura - 48, desenhados pelo mesmo caminho das janelas)
+		if( g_hasBasic && upData != nullptr && info.Width() <= 34 && info.Height() <= 34 ){
+			D3DVIEWPORT9 vp;
+			dev->GetViewport( &vp );
+			if( info.minX >= vp.Width - 52.0f && info.maxX <= vp.Width + 1.0f && info.minY >= 150.0f && info.minY < vp.Height - 120.0f ){
+				DrawTransformed( dev, info, upData, upStride, 0, 0, 0.0f, BUFF_SHIFT, 1.0f, false );
+				return true;
+			}
+		}
 		// barra embaixo do personagem: as imagens no lugar do bloco da janela nativa
 		if( g_hasGage && Within( info, g_gageRect, 1.0f ) ){
 			ReadCaller( info );
+			if( GageCovered( g_gageRect ) ) return true; // embaixo da janela de quests/Pokédex
 			if( g_windowHash == 0 || g_drawHash == g_windowHash ){
 				if( !g_gageDrawn ){
 					g_gageDrawn = true;
@@ -1361,6 +1399,7 @@ namespace {
 			const client::PartyGage& g = g_party[i];
 			if( !Within( info, g.rect, 1.0f ) ) continue;
 			ReadCaller( info );
+			if( GageCovered( g.rect ) ) return true;
 			if( g_windowHash != 0 && g_drawHash != g_windowHash ) break;
 			if( !g_partyDrawn[i] ){
 				g_partyDrawn[i] = true;
@@ -1638,7 +1677,7 @@ namespace {
 
 	void OnFrameEnd( IDirect3DDevice9* dev ){
 		const config::Settings& cfg = config::Get();
-		if( g_hasGage && !g_gageDrawn ){
+		if( g_hasGage && !g_gageDrawn && !GageCovered( g_gageRect ) ){
 			// janela vazia que o cliente não chegou a desenhar: barra por cima no fim do quadro
 			DrawPlayerGage( dev );
 		}

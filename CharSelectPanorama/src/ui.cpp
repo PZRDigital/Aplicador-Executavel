@@ -1826,7 +1826,7 @@ void ui::DrawZeroQuestWindow( IDirect3DDevice9* dev, float nx, float ny, float n
 	g_q.x = x; g_q.y = y;
 	g_q.nx = nx; g_q.ny = ny; g_q.nw = nw; g_q.nh = nh;
 	g_q.title = { nx + 60, ny + 7 };
-	g_q.neutral = { nx + 200, ny + nh - 12 };
+	g_q.neutral = { nx + 200, ny + 40 }; // topo da lista nativa (longe das bordas: lá o cursor vira o de redimensionar)
 	client::WndRect cr;
 	g_q.close = game::QuestCloseRect( cr ) ? input::Point{ cr.x + cr.w * 0.5f, cr.y + cr.h * 0.5f } : input::Point{ nx + nw - 40, ny + nh - 12 };
 	input::Point m = input::RealCursor();
@@ -2110,7 +2110,7 @@ void ui::DrawPokedex( IDirect3DDevice9* dev, float nx, float ny, float nw, float
 	g_pdx.tick = GetTickCount();
 	g_pdx.x = x; g_pdx.y = y; g_pdx.nx = nx; g_pdx.ny = ny; g_pdx.nw = nw; g_pdx.nh = nh;
 	g_pdx.title = { nx + 60, ny + 6 };
-	g_pdx.neutral = { nx + nw - 40, ny + nh - 10 };
+	g_pdx.neutral = { nx + 50, ny + 80 }; // ilustração da nativa (longe das bordas e dos botões)
 	client::WndRect cr;
 	g_pdx.close = game::PetCloseRect( cr ) ? input::Point{ cr.x + cr.w * 0.5f, cr.y + cr.h * 0.5f } : input::Point{ nx + nw - 9, ny + 7 };
 	game::Pet pet = game::CurrentPet();
