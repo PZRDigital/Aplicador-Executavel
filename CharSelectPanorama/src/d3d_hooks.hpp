@@ -9,4 +9,6 @@ namespace d3dhooks {
 	// ao identificar quem desenha (cursor).
 	void SetSelfImage( void* base );
 	void DebugDiagNow( int frames ); // registra os próximos quadros (debug)
+	// Ícone de buff deslocado (desenhado mais abaixo) sob o ponto: shiftY = quanto subir para achar o original
+	bool BuffIconAt( float x, float y, float& shiftY );
 }

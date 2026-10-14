@@ -10,6 +10,7 @@
 
 #include "chardata.hpp"
 #include "client.hpp"
+#include "d3d_hooks.hpp"
 #include "config.hpp"
 #include "gfx.hpp"
 #include "log.hpp"
@@ -2402,6 +2403,11 @@ namespace { bool GameWindowsRedirect( const input::Point& real, input::Point& ta
 
 bool ui::Redirect( const input::Point& real, input::Point& target ){
 	if( GameWindowsRedirect( real, target ) ) return true;
+	{
+		// ícones de buff que descemos (abaixo do nome do mapa): o cliente ainda testa o mouse no lugar original
+		float dy;
+		if( client::InGame() && d3dhooks::BuffIconAt( real.x, real.y, dy ) ){ target = { real.x, real.y - dy }; return true; }
+	}
 	{
 		client::WndRect br;
 		if( client::InGame() && game::BasicInfoRect( br ) && StatusHudRedirect( real, target, (float)br.x, (float)br.y ) ) return true;

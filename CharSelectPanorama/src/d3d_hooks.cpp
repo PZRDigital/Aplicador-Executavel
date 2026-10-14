@@ -6,6 +6,7 @@
 #include <cmath>
 #include <map>
 #include <vector>
+#include <mutex>
 
 #include "chardata.hpp"
 #include "client.hpp"
@@ -1069,6 +1070,14 @@ namespace {
 	}
 
 	constexpr float BUFF_SHIFT = 30.0f; // quanto os ícones de buff descem (abaixo do nome do mapa)
+	// onde os ícones deslocados foram desenhados (quadro atual / anterior): o mouse sobre eles vai para o original
+	struct BuffRect { float x0, y0, x1, y1; };
+	std::vector<BuffRect> g_buffRects, g_buffRectsPrev;
+	std::mutex g_buffLock;
+	bool BuffHit( float x, float y ){
+		for( const BuffRect& r : g_buffRectsPrev ) if( x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1 ) return true;
+		return false;
+	}
 	constexpr float QUEST_W = 592, QUEST_H = 435, POKEDEX_W = 575, POKEDEX_H = 490;
 
 	// a barra do personagem é desenhada depois das janelas: some onde a janela de quests/Pokédex está
@@ -1383,6 +1392,26 @@ namespace {
 			dev->GetViewport( &vp );
 			if( info.minX >= vp.Width - 52.0f && info.maxX <= vp.Width + 1.0f && info.minY >= 150.0f && info.minY < vp.Height - 120.0f ){
 				DrawTransformed( dev, info, upData, upStride, 0, 0, 0.0f, BUFF_SHIFT, 1.0f, false );
+				std::lock_guard<std::mutex> g( g_buffLock );
+				g_buffRects.push_back( { info.minX, info.minY + BUFF_SHIFT, info.maxX, info.maxY + BUFF_SHIFT } );
+				return true;
+			}
+		}
+		// tooltip do ícone sob o mouse: à esquerda da coluna, começando perto do ponto original
+		// (mouse levado ao ícone original: o tooltip do cliente sai 30 px acima e desce também)
+		if( g_hasBasic && upData != nullptr ){
+			input::Point real = input::RealCursor();
+			bool hover;
+			{
+				std::lock_guard<std::mutex> g( g_buffLock );
+				hover = BuffHit( real.x, real.y );
+			}
+			D3DVIEWPORT9 vp;
+			dev->GetViewport( &vp );
+			float ty = real.y - BUFF_SHIFT;
+			if( hover && info.minX < vp.Width - 52.0f && info.minX >= vp.Width - 420.0f && info.maxX <= vp.Width - 40.0f
+				&& info.minY >= ty - 15.0f && info.maxY <= ty + 220.0f ){
+				DrawTransformed( dev, info, upData, upStride, 0, 0, 0.0f, BUFF_SHIFT, 1.0f, false );
 				return true;
 			}
 		}
@@ -1591,6 +1620,11 @@ namespace {
 
 	void GameFrameEnd( IDirect3DDevice9* dev ){
 		g_menuDrawn = g_questDrawn = g_petDrawn = g_wndRectFresh = false;
+		{
+			std::lock_guard<std::mutex> g( g_buffLock );
+			g_buffRectsPrev.swap( g_buffRects );
+			g_buffRects.clear();
+		}
 		if( GameHudOn( config::FEAT_HUD ) ){ game::FixChatIcons(); game::RemoveButtons(); }
 		g_hasPet = GameHudOn( config::FEAT_PETWND ) && game::PetWindowRect( g_petRect );
 		g_hasQuest = GameHudOn( config::FEAT_QUESTWND ) && game::QuestWindowRect( g_questRect );
@@ -2020,4 +2054,12 @@ void d3dhooks::OnDirect3DCreated( IDirect3D9* d3d, bool isEx ){
 	if( isEx ){
 		HookVtable( d3d, IDX_D3DEX_CREATEDEVICEEX, &Hook_CreateDeviceEx, o_CreateDeviceEx );
 	}
+}
+
+bool d3dhooks::BuffIconAt( float x, float y, float& shiftY ){
+	std::lock_guard<std::mutex> g( g_buffLock );
+	for( const BuffRect& r : g_buffRectsPrev ){
+		if( x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1 ){ shiftY = BUFF_SHIFT; return true; }
+	}
+	return false;
 }
