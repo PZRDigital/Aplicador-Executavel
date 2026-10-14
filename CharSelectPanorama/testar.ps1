@@ -9,6 +9,7 @@
 #   digitar <texto>     envia texto (sintaxe SendKeys: {ENTER}, etc.)
 #   rajada <x,y> <n>    clica em x,y e captura n quadros seguidos (reduzidos) em testes\rajada\
 #   atalho <vk,vk> [n]  aperta a combinação (ex.: 18,86 = Alt+V) e captura n quadros em testes\rajada\
+#   arrastar <x,y> <x2,y2>  segura o botão em x,y, arrasta até x2,y2 capturando quadros em testes\rajada\
 #   fechar              encerra o Codex
 param(
 	[Parameter(Mandatory = $true)][string]$Acao,
@@ -160,6 +161,38 @@ switch ($Acao) {
 		$tempos | Set-Content (Join-Path $dir 'tempos.txt')
 		$g.Dispose(); $gs.Dispose(); $bmp.Dispose(); $small.Dispose()
 		Write-Host "OK: $n quadros em $dir"
+	}
+	'arrastar' {
+		# arrasta com o botão esquerdo apertado, capturando (reduzido) a cada passo
+		$h = Janela
+		$r = New-Object W+RECT; [W]::GetClientRect($h, [ref]$r) | Out-Null
+		$o = New-Object W+POINT; [W]::ClientToScreen($h, [ref]$o) | Out-Null
+		$w = $r.R - $r.L; $hh = $r.B - $r.T
+		$dir = Join-Path $saida 'rajada'
+		New-Item -ItemType Directory -Force -Path $dir | Out-Null
+		Get-ChildItem $dir -Filter *.png | Remove-Item
+		$p1 = $A.Split(','); $p2 = $B.Split(',')
+		Mover ([int]$p1[0]) ([int]$p1[1])
+		$bmp = New-Object System.Drawing.Bitmap $w, $hh
+		$g = [System.Drawing.Graphics]::FromImage($bmp)
+		$small = New-Object System.Drawing.Bitmap ([int]($w / 2)), ([int]($hh / 2))
+		$gs = [System.Drawing.Graphics]::FromImage($small)
+		[W]::mouse_event(0x02, 0, 0, 0, 0); Start-Sleep -Milliseconds 120
+		$n = 24
+		for ($i = 1; $i -le $n; $i++) {
+			$x = [int]$p1[0] + ([int]$p2[0] - [int]$p1[0]) * $i / $n
+			$y = [int]$p1[1] + ([int]$p2[1] - [int]$p1[1]) * $i / $n
+			$q = New-Object W+POINT; $q.X = $x; $q.Y = $y
+			[W]::ClientToScreen($h, [ref]$q) | Out-Null
+			[W]::SetCursorPos($q.X, $q.Y) | Out-Null
+			Start-Sleep -Milliseconds 15
+			$g.CopyFromScreen($o.X, $o.Y, 0, 0, $bmp.Size)
+			$gs.DrawImage($bmp, 0, 0, $small.Width, $small.Height)
+			$small.Save((Join-Path $dir ('{0:D3}.png' -f $i)))
+		}
+		[W]::mouse_event(0x04, 0, 0, 0, 0)
+		$g.Dispose(); $gs.Dispose(); $bmp.Dispose(); $small.Dispose()
+		Write-Host "OK: arrastado de $A para $B, $n quadros em $dir"
 	}
 	'fechar' { Get-Process Codex -ErrorAction SilentlyContinue | Stop-Process -Force; Write-Host 'OK: cliente fechado' }
 	default { throw "Acao desconhecida: $Acao" }

@@ -1051,6 +1051,9 @@ namespace {
 	bool g_hasQuest = false, g_questDrawn = false;
 	client::WndRect g_petRect;           // janela de pet nativa (escondida embaixo da Pokédex)
 	bool g_hasPet = false, g_petDrawn = false;
+	// posição relida no primeiro desenho do quadro: ao arrastar, a janela anda depois do fim do quadro
+	// anterior e o retângulo antigo deixaria a nativa aparecer
+	bool g_wndRectFresh = false;
 	bool g_skinFills = false; // dentro do jogo com a skin escura
 	client::WndRect g_basicRect;
 	client::WndRect g_gageRect;     // barra de HP/SP embaixo do personagem (UIPlayerGage)
@@ -1430,6 +1433,12 @@ namespace {
 				return true;
 			}
 		}
+		if( !g_wndRectFresh ){
+			g_wndRectFresh = true;
+			client::WndRect r;
+			if( g_hasPet && game::PetWindowRect( r ) ) g_petRect = r;
+			if( g_hasQuest && game::QuestWindowRect( r ) ) g_questRect = r;
+		}
 		// pet: a Pokédex no lugar do primeiro bloco da nativa
 		if( g_hasPet && Within( info, g_petRect, 1.0f ) ){
 			ReadCaller( info );
@@ -1581,7 +1590,7 @@ namespace {
 	}
 
 	void GameFrameEnd( IDirect3DDevice9* dev ){
-		g_menuDrawn = g_questDrawn = g_petDrawn = false;
+		g_menuDrawn = g_questDrawn = g_petDrawn = g_wndRectFresh = false;
 		if( GameHudOn( config::FEAT_HUD ) ){ game::FixChatIcons(); game::RemoveButtons(); }
 		g_hasPet = GameHudOn( config::FEAT_PETWND ) && game::PetWindowRect( g_petRect );
 		g_hasQuest = GameHudOn( config::FEAT_QUESTWND ) && game::QuestWindowRect( g_questRect );

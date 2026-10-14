@@ -2359,7 +2359,7 @@ void ui::DrawPokedex( IDirect3DDevice9* dev, float nx, float ny, float nw, float
 	struct Ctl { float x, y, w, h, r; int local; const wchar_t* label; float lx, ly; int align; };
 	const Ctl ctls[] = {
 		{ 72, 379, 48, 14, 7, P_FEED, L"Alimentar", 96, 363, gfx::Center },
-		{ 130, 379, 48, 14, 7, P_TRICK, L"Truque", 154, 363, gfx::Center },
+		{ 130, 379, 48, 14, 7, P_TRICK, L"Brincar", 154, 363, gfx::Center },
 		{ 26, 369, 38, 38, 19, P_EGG, L"Ovo", 45, 409, gfx::Center },
 		{ 199, 381, 68, 68, 8, P_ACC, L"Acessório", 233, 452, gfx::Center },
 		{ 61, 324, 26, 26, 13, P_RENAME, L"Renomear", 92, 331, gfx::Left },
