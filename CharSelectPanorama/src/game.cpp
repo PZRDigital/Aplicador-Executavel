@@ -923,47 +923,6 @@ void game::RemoveButtons(){
 	}
 }
 
-void game::UnifyStatusEquip(){
-	constexpr uintptr_t VT_EQUIP = 0x101232C, VT_STATUS = 0x1012AC4;
-	constexpr int WND_EQUIP = 0x24, WND_STATUS = 0x0B;
-	constexpr uintptr_t FN_MAKE_WINDOW = 0xA21760, FN_CLOSE_WINDOW = 0xA16BB0; // fechar devolve true se estava aberta
-	static bool prevEquip = false, prevStatus = false;
-	static int lastEx = 0, lastEy = 0;
-	if( !g_sessionOk ) return;
-	auto call = []( uintptr_t fn, int id ){
-		__try{ reinterpret_cast<uintptr_t( __thiscall* )( void*, int )>( fn )( reinterpret_cast<void*>( G_WINDOW_MGR ), id ); }
-		__except( EXCEPTION_EXECUTE_HANDLER ){}
-	};
-	// o fechamento termina depois: a janela mandada fechar ainda aparece na lista por alguns quadros
-	static DWORD closingEquip = 0, closingStatus = 0;
-	DWORD now = GetTickCount();
-	uintptr_t eq = OpenWindow( VT_EQUIP ), st = OpenWindow( VT_STATUS );
-	if( now - closingEquip < 400 ) eq = 0;
-	if( now - closingStatus < 400 ) st = 0;
-	bool equip = eq != 0, status = st != 0;
-	if( equip && !prevEquip && !status ){ call( FN_MAKE_WINDOW, WND_STATUS ); st = OpenWindow( VT_STATUS ); status = st != 0; }
-	else if( status && !prevStatus && !equip ){ call( FN_MAKE_WINDOW, WND_EQUIP ); eq = OpenWindow( VT_EQUIP ); equip = eq != 0; }
-	else if( !equip && prevEquip && status ){ call( FN_CLOSE_WINDOW, WND_STATUS ); closingStatus = now; status = false; st = 0; }
-	else if( !status && prevStatus && equip ){ call( FN_CLOSE_WINDOW, WND_EQUIP ); closingEquip = now; equip = false; eq = 0; }
-	prevEquip = equip;
-	prevStatus = status;
-	client::WndRect er, sr;
-	if( !equip || !status || !WindowRect( eq, er ) || !WindowRect( st, sr ) ) return;
-	if( er.x != lastEx || er.y != lastEy || ( sr.x == er.x && sr.y == er.y + er.h ) ){
-		// equipamentos moveu (ou já estão juntas): atributos vai para baixo dela
-		*reinterpret_cast<int*>( st + client::OFS_WND_X ) = er.x;
-		*reinterpret_cast<int*>( st + client::OFS_WND_Y ) = er.y + er.h;
-	}else{
-		// arrastaram os atributos: equipamentos acompanha por cima
-		er.x = sr.x;
-		er.y = sr.y - er.h;
-		*reinterpret_cast<int*>( eq + client::OFS_WND_X ) = er.x;
-		*reinterpret_cast<int*>( eq + client::OFS_WND_Y ) = er.y;
-	}
-	lastEx = er.x;
-	lastEy = er.y;
-}
-
 bool game::PetWindowRect( client::WndRect& r ){
 	uintptr_t w = g_sessionOk ? OpenWindow( VT_PETINFO ) : 0;
 	return w != 0 && WindowRect( w, r );
