@@ -10,7 +10,6 @@
 
 #include "chardata.hpp"
 #include "client.hpp"
-#include "d3d_hooks.hpp"
 #include "config.hpp"
 #include "gfx.hpp"
 #include "log.hpp"
@@ -97,7 +96,6 @@ namespace {
 	struct ZeroImages {
 		gfx::Image gaugeBg, hpNormal, hpDamage, hpDamageDeco, hpDeco, sp;
 		gfx::Image expBaseBg, expJobBg, expBase, expJob;
-		gfx::Image fieldName;
 		bool tried = false;
 	} g_zero;
 	std::map<int, gfx::Image> g_zeroJobs; // img\zero\job\icon_job_<classe>.png
@@ -1657,7 +1655,7 @@ void ui::OnDeviceLost(){
 	g_icons.clear();
 	g_assetsTried = false;
 	gfx::Image* zero[] = { &g_zero.gaugeBg, &g_zero.hpNormal, &g_zero.hpDamage, &g_zero.hpDamageDeco, &g_zero.hpDeco, &g_zero.sp,
-		&g_zero.expBaseBg, &g_zero.expJobBg, &g_zero.expBase, &g_zero.expJob, &g_zero.fieldName };
+		&g_zero.expBaseBg, &g_zero.expJobBg, &g_zero.expBase, &g_zero.expJob };
 	for( gfx::Image* img : zero ) gfx::Release( *img );
 	g_zero.tried = false;
 	for( auto& kv : g_zeroJobs ) gfx::Release( kv.second );
@@ -2404,11 +2402,6 @@ namespace { bool GameWindowsRedirect( const input::Point& real, input::Point& ta
 bool ui::Redirect( const input::Point& real, input::Point& target ){
 	if( GameWindowsRedirect( real, target ) ) return true;
 	{
-		// ícones de buff que descemos (abaixo do nome do mapa): o cliente ainda testa o mouse no lugar original
-		float tx, ty;
-		if( client::InGame() && d3dhooks::BuffRedirect( real.x, real.y, tx, ty ) ){ target = { tx, ty }; return true; }
-	}
-	{
 		client::WndRect br;
 		if( client::InGame() && game::BasicInfoRect( br ) && StatusHudRedirect( real, target, (float)br.x, (float)br.y ) ) return true;
 		if( client::InGame() && ZeroMenuRedirect( real, target ) ) return true;
@@ -2614,7 +2607,7 @@ namespace {
 			{ &g_zero.gaugeBg, L"gze_bg" }, { &g_zero.hpNormal, L"gze_hp_normal" }, { &g_zero.hpDamage, L"gze_hp_damage" },
 			{ &g_zero.hpDamageDeco, L"gze_hp_damage_deco" }, { &g_zero.hpDeco, L"gze_hp_deco" }, { &g_zero.sp, L"gze_sp_normal" },
 			{ &g_zero.expBaseBg, L"bg_exp_base" }, { &g_zero.expJobBg, L"bg_exp_job" }, { &g_zero.expBase, L"gze_exp_base" },
-			{ &g_zero.expJob, L"gze_exp_job" }, { &g_zero.fieldName, L"bg_fieldname" },
+			{ &g_zero.expJob, L"gze_exp_job" },
 		};
 		for( auto& f : files ) gfx::LoadImageFile( dev, config::BaseDir() + L"img\\zero\\" + f.name + L".png", *f.img );
 	}
@@ -2697,20 +2690,6 @@ void ui::DrawStatusHud( IDirect3DDevice9* dev, float x, float y, const game::Sta
 	gfx::TextOutline( Font::ZeroName, name, x + 47, y + 5, ZERO_WHITE, ZERO_NAME_OUTLINE );
 	ZeroGaugeLine( x, y + 25, st.hp, st.maxHp );
 	ZeroGaugeLine( x, y + 42, st.sp, st.maxSp );
-	gfx::End();
-}
-
-void ui::DrawZeroMapName( IDirect3DDevice9* dev, float screenW, const std::wstring& name ){
-	if( name.empty() || !gfx::Begin( dev ) ) return;
-	ZeroAssets( dev );
-	float x = screenW - 145, y = 159, w = 125;
-	if( g_zero.fieldName.tex ) gfx::DrawImage( g_zero.fieldName, x, y, (float)g_zero.fieldName.width, (float)g_zero.fieldName.height );
-	// centrado; sombra preta 1 px à direita/abaixo e o nome em dourado (cor 0x3AEFFF do cliente = RGB FF EF 3A)
-	std::wstring shown = name;
-	while( shown.size() > 1 && gfx::TextWidth( Font::ZeroMedium, shown ) > w - 6 ) shown.pop_back();
-	float tx = x + floorf( ( w - gfx::TextWidth( Font::ZeroMedium, shown ) ) * 0.5f );
-	gfx::Text( Font::ZeroMedium, shown, tx + 1, y + 8, Rgba( 0, 0, 0, 1.0f ), gfx::Left, 0.0f, false );
-	gfx::Text( Font::ZeroMedium, shown, tx, y + 7, Rgba( 255, 239, 58, 1.0f ), gfx::Left, 0.0f, false );
 	gfx::End();
 }
 

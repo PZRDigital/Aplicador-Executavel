@@ -92,8 +92,6 @@ namespace ui {
 	bool StatusHudRedirect( const input::Point& real, input::Point& target, float nativeX, float nativeY );
 	// Barra de EXP do Ragnarok Zero, colada embaixo da tela
 	void DrawExpBar( IDirect3DDevice9* dev, float screenW, float screenH, const game::Status& status );
-	// Nome do mapa do Zero (UIMapNameWnd): faixa 125x25 embaixo do minimapa, em (tela - 145, 159)
-	void DrawZeroMapName( IDirect3DDevice9* dev, float screenW, const std::wstring& name );
 	// Menu de ícones do Ragnarok Zero (no lugar da UIMenuIconWnd), no canto inferior direito.
 	// ZeroMenuOrigin = canto superior esquerdo (a janela nativa vai para lá, escondida embaixo)
 	void ZeroMenuOrigin( bool open, float screenW, float screenH, float& x, float& y );

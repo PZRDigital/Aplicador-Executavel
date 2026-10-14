@@ -1069,15 +1069,6 @@ namespace {
 		ui::DrawZeroMenu( dev, g_menu, (float)vp.Width, (float)vp.Height );
 	}
 
-	constexpr float BUFF_SHIFT = 30.0f; // quanto os ícones de buff descem (abaixo do nome do mapa)
-	// onde os ícones deslocados foram desenhados (quadro atual / anterior): o mouse sobre eles vai para o original
-	struct BuffRect { float x0, y0, x1, y1; };
-	std::vector<BuffRect> g_buffRects, g_buffRectsPrev;
-	std::mutex g_buffLock;
-	bool BuffHit( float x, float y ){
-		for( const BuffRect& r : g_buffRectsPrev ) if( x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1 ) return true;
-		return false;
-	}
 	constexpr float QUEST_W = 592, QUEST_H = 435, POKEDEX_W = 575, POKEDEX_H = 490;
 
 	// a barra do personagem é desenhada depois das janelas: some onde a janela de quests/Pokédex está
@@ -1385,40 +1376,6 @@ namespace {
 				}
 			}
 		}
-		// ícones de buff na coluna da direita: descem para não cobrir o nome do mapa (embaixo do minimapa)
-		// (32x32 em x = largura - 48, desenhados pelo mesmo caminho das janelas)
-		if( g_hasBasic && upData != nullptr && info.Width() <= 34 && info.Height() <= 34 ){
-			D3DVIEWPORT9 vp;
-			dev->GetViewport( &vp );
-			if( info.minX >= vp.Width - 52.0f && info.maxX <= vp.Width + 1.0f && info.minY >= 150.0f && info.minY < vp.Height - 120.0f ){
-				DrawTransformed( dev, info, upData, upStride, 0, 0, 0.0f, BUFF_SHIFT, 1.0f, false );
-				std::lock_guard<std::mutex> g( g_buffLock );
-				g_buffRects.push_back( { info.minX, info.minY + BUFF_SHIFT, info.maxX, info.maxY + BUFF_SHIFT } );
-				return true;
-			}
-		}
-		// tooltip do ícone sob o mouse: à esquerda da coluna, começando perto do ponto original
-		// (mouse levado ao ícone original: o tooltip do cliente sai 30 px acima e desce também)
-		if( g_hasBasic && upData != nullptr ){
-			input::Point real = input::RealCursor();
-			bool hover;
-			{
-				std::lock_guard<std::mutex> g( g_buffLock );
-				hover = BuffHit( real.x, real.y );
-			}
-			D3DVIEWPORT9 vp;
-			dev->GetViewport( &vp );
-			float ty = real.y - BUFF_SHIFT;
-			// (só peças com transparência: o cenário também é desenhado em blocos opacos nessa faixa e não pode descer)
-			DWORD blend = 0;
-			if( hover ) dev->GetRenderState( D3DRS_ALPHABLENDENABLE, &blend );
-			if( hover && blend && info.Width() <= 220.0f && info.Height() <= 200.0f && info.minX >= real.x - 260.0f
-				&& info.minX < vp.Width - 52.0f && info.maxX <= vp.Width - 40.0f
-				&& info.minY >= ty - 15.0f && info.maxY <= ty + 220.0f ){
-				DrawTransformed( dev, info, upData, upStride, 0, 0, 0.0f, BUFF_SHIFT, 1.0f, false );
-				return true;
-			}
-		}
 		// barra embaixo do personagem: as imagens no lugar do bloco da janela nativa
 		if( g_hasGage && Within( info, g_gageRect, 1.0f ) ){
 			ReadCaller( info );
@@ -1590,8 +1547,6 @@ namespace {
 					D3DVIEWPORT9 vp;
 					dev->GetViewport( &vp );
 					ui::DrawExpBar( dev, (float)vp.Width, (float)vp.Height, st );
-					std::string map = game::CurrentMap();
-					if( !map.empty() ) ui::DrawZeroMapName( dev, (float)vp.Width, chardata::MapName( map ) );
 					ui::DrawStatusHud( dev, (float)g_basicRect.x, (float)g_basicRect.y, st );
 				}
 			}
@@ -1624,12 +1579,6 @@ namespace {
 
 	void GameFrameEnd( IDirect3DDevice9* dev ){
 		g_menuDrawn = g_questDrawn = g_petDrawn = g_wndRectFresh = false;
-		{
-			std::lock_guard<std::mutex> g( g_buffLock );
-			g_buffRectsPrev.swap( g_buffRects );
-			g_buffRects.clear();
-		}
-		if( GameHudOn( config::FEAT_HUD ) ){ game::FixChatIcons(); game::RemoveButtons(); }
 		g_hasPet = GameHudOn( config::FEAT_PETWND ) && game::PetWindowRect( g_petRect );
 		g_hasQuest = GameHudOn( config::FEAT_QUESTWND ) && game::QuestWindowRect( g_questRect );
 		g_hasMenu = GameHudOn( config::FEAT_MENU ) && game::ReadMenu( g_menu );
@@ -2058,13 +2007,4 @@ void d3dhooks::OnDirect3DCreated( IDirect3D9* d3d, bool isEx ){
 	if( isEx ){
 		HookVtable( d3d, IDX_D3DEX_CREATEDEVICEEX, &Hook_CreateDeviceEx, o_CreateDeviceEx );
 	}
-}
-
-bool d3dhooks::BuffRedirect( float x, float y, float& tx, float& ty ){
-	std::lock_guard<std::mutex> g( g_buffLock );
-	if( BuffHit( x, y ) ){ tx = x; ty = y - BUFF_SHIFT; return true; }
-	for( const BuffRect& r : g_buffRectsPrev ){
-		if( x >= r.x0 && x < r.x1 && y >= r.y0 - BUFF_SHIFT && y < r.y1 - BUFF_SHIFT ){ tx = r.x0 - 12.0f; ty = y; return true; }
-	}
-	return false;
 }
