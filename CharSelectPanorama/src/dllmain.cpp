@@ -156,6 +156,7 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, LPVOID ){
 		if( config::Get().enabled ){
 			client::Install();
 			if( config::Feature( config::FEAT_HUD ) || config::Feature( config::FEAT_ITEMWND ) || config::Feature( config::FEAT_MENU ) || config::Feature( config::FEAT_QUESTWND ) || config::Feature( config::FEAT_PETWND ) ) game::InstallEarly();
+			if( config::Feature( config::FEAT_HUD ) ) skin::InstallFiles(); // chat do Zero e atributos em português
 			if( config::Feature( config::FEAT_FADE ) ) client::InstallFastFade( config::Get().fadeMs );
 			if( config::Get().playerBars ) client::InstallPlayerGage();
 			bool custom = config::CustomActive() && config::Feature( config::FEAT_COMBAT );

@@ -198,6 +198,12 @@ void skin::Install(){
 	logger::Write( "Skin: imagens %s, textos %s", a ? "ok" : "FALHOU", b ? "ok" : "FALHOU" );
 }
 
+void skin::InstallFiles(){
+	if( !vfs::Exists( config::BaseDir() + L"skin\\lista.txt" ) ) return;
+	g_ready = PatchIat( IAT_CREATEFILEA, &Hook_CreateFileA, o_CreateFileA );
+	logger::Write( "Imagens substituidas (skin): %s", g_ready ? "ok" : "FALHOU" );
+}
+
 void skin::SetTextLightening( bool on ){
 	g_textOn = on;
 }

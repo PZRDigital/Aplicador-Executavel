@@ -25,7 +25,8 @@ Como usar
      Chave Personalizada/Original   (depende da seleção) o jogador pode voltar à original
      Postura de combate             (depende da seleção) selecionado em guarda e com golpe
      Transição rápida               troca de mapa e @refresh sem a demora do fade
-     Barra de status                status (classe, HP, SP), barra de EXP e nome do mapa do Ragnarok Zero
+     Interface Zero                 status (classe, HP, SP), barra de EXP, nome do mapa e chat do Ragnarok Zero;
+                                    janela de atributos (Alt+A) com os nomes em português
      Janela de item                 descrição do item no tema
      Equipamentos                   Alt+Q com atributos e informações
      Inventário                     Alt+E com abas, busca e grade

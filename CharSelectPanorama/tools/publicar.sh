@@ -26,6 +26,7 @@ if [ "$1" != "--sem-grf" ]; then
 	python3 tools/quests.py "$CLIENTE"
 	python3 tools/pets.py "$CLIENTE"
 	python3 tools/pokedex.py
+	python3 tools/substituicoes.py "$CLIENTE"
 	python3 tools/criar_grf.py dist/charselect dist/char.grf
 	cp dist/char.grf "$CLIENTE/char.grf"
 fi

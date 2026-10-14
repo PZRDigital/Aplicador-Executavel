@@ -2,9 +2,10 @@
 
 O w_statwin_bg.bmp / w_ex_statwin_bg.bmp do data.grf do cliente (versão LATAM) vem sem os nomes;
 na versão kRO eles fazem parte da imagem. Este script escreve os nomes em português nas mesmas
-posições e no mesmo estilo da kRO (azul-escuro 40,60,101, negrito) e grava na pasta data do cliente.
+posições e no mesmo estilo da kRO (azul-escuro 40,60,101, negrito).
 
-Uso: python3 statwin_ptbr.py <pasta do cliente>
+Uso: python3 statwin_ptbr.py <pasta do cliente> [pasta de saída]
+  Sem saída: grava na pasta data do cliente. Com saída: devolve as imagens a quem chamou (substituicoes.py).
 """
 import io, os, sys
 from PIL import Image, ImageDraw, ImageFont
@@ -35,11 +36,9 @@ def escrever( im, nomes, topo ):
         d.text( ( COLUNAS[col], topo + 16 * lin - sobe ), txt, font=f, fill=COR )
 
 
-def main():
-    cliente = sys.argv[1]
-    vfs = Vfs( cliente )
-    pasta = os.path.join( cliente, 'data', 'texture', '유저인터페이스'.encode( 'cp949' ).decode( 'latin-1' ), 'statuswnd' )
-    os.makedirs( pasta, exist_ok=True )
+def imagens( vfs ):
+    """{ caminho na GRF (bytes): imagem PIL } das duas janelas com os nomes."""
+    out = {}
     for nome, blocos in ( ( 'w_statwin_bg.bmp', [ ( BASICOS, 7 ) ] ), ( 'w_ex_statwin_bg.bmp', [ ( BASICOS, 7 ), ( TALENTOS, 128 ) ] ) ):
         # direto das GRFs (a pasta data já pode ter a versão escrita por este script)
         k = vfs.key( 'data\\texture\\유저인터페이스\\statuswnd\\' + nome )
@@ -47,7 +46,16 @@ def main():
         im = Image.open( io.BytesIO( g.read( k ) ) ).convert( 'RGB' )
         for nomes, topo in blocos:
             escrever( im, nomes, topo )
-        im.save( os.path.join( pasta, nome ) )
+        out[k] = im
+    return out
+
+
+def main():
+    cliente = sys.argv[1]
+    pasta = os.path.join( cliente, 'data', 'texture', '유저인터페이스'.encode( 'cp949' ).decode( 'latin-1' ), 'statuswnd' )
+    os.makedirs( pasta, exist_ok=True )
+    for k, im in imagens( Vfs( cliente ) ).items():
+        im.save( os.path.join( pasta, k.decode( 'cp949' ).split( '\\' )[-1] ) )
     print( 'OK: nomes em português em', pasta )
 
 

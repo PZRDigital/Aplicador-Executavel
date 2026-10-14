@@ -48,7 +48,7 @@ namespace {
 		{ embutir::CHAVE, L"Chave Personalizada/Original", L"O jogador pode voltar à seleção original", true, nullptr },
 		{ embutir::COMBATE, L"Postura de combate", L"Selecionado em guarda e com golpe", true, nullptr },
 		{ embutir::FADE, L"Transição rápida", L"Troca de mapa e @refresh sem demora", true, nullptr },
-		{ embutir::STATUS, L"Barra de status", L"Status, EXP e nome do mapa do Ragnarok Zero", true, nullptr },
+		{ embutir::STATUS, L"Interface Zero", L"Status, EXP, mapa, chat e atributos (Alt+A)", true, nullptr },
 		{ embutir::ITEM, L"Janela de item", L"Descrição do item no tema", true, nullptr },
 		{ embutir::EQUIP, L"Equipamentos", L"Alt+Q com atributos e informações", true, nullptr },
 		{ embutir::INVENTARIO, L"Inventário", L"Alt+E com abas, busca e grade", true, nullptr },
