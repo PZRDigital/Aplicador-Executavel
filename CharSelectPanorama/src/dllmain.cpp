@@ -155,7 +155,7 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, LPVOID ){
 		config::Load();
 		if( config::Get().enabled ){
 			client::Install();
-			if( config::Feature( config::FEAT_HUD ) || config::Feature( config::FEAT_ITEMWND ) || config::Feature( config::FEAT_MENU ) ) game::InstallEarly();
+			if( config::Feature( config::FEAT_HUD ) || config::Feature( config::FEAT_ITEMWND ) || config::Feature( config::FEAT_MENU ) || config::Feature( config::FEAT_QUESTWND ) ) game::InstallEarly();
 			if( config::Feature( config::FEAT_FADE ) ) client::InstallFastFade( config::Get().fadeMs );
 			if( config::Get().playerBars ) client::InstallPlayerGage();
 			bool custom = config::CustomActive() && config::Feature( config::FEAT_COMBAT );

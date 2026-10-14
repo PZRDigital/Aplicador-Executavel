@@ -108,6 +108,15 @@ namespace {
 		g_skills[sk.id] = sk;
 	}
 
+	std::map<int, game::Quest> g_quests;
+
+	game::QuestObjective* FindHunt( uint32_t hunt ){
+		auto q = g_quests.find( (int)( hunt / 1000 ) );
+		if( q == g_quests.end() ) return nullptr;
+		for( game::QuestObjective& o : q->second.objectives ) if( o.hunt == hunt ) return &o;
+		return nullptr;
+	}
+
 	void Handle( uint16_t id, const uint8_t* b, size_t len ){
 		std::lock_guard<std::mutex> g( g_lock );
 		switch( id ){
@@ -216,6 +225,74 @@ namespace {
 				break;
 			case ZC_ITEM_THROW_ACK:
 				if( len >= 6 ) TakeAway( Rd<uint16_t>( b, 2 ), Rd<uint16_t>( b, 4 ) );
+				break;
+			case 0x09F8: // ZC_ALL_QUEST_LIST3: qtd; { id, estado, tempo, prazo, nobj; { caça, raça, mob, nvmin, nvmax, atual, total, nome[24] } }
+				if( len >= 8 ){
+					g_quests.clear();
+					uint32_t n = Rd<uint32_t>( b, 4 );
+					size_t p = 8;
+					for( uint32_t i = 0; i < n && p + 15 <= len; i++ ){
+						game::Quest q;
+						q.id = (int)Rd<uint32_t>( b, p );
+						q.state = b[p + 4];
+						q.end = Rd<uint32_t>( b, p + 9 );
+						int objs = Rd<uint16_t>( b, p + 13 );
+						p += 15;
+						for( int k = 0; k < objs && p + 44 <= len; k++, p += 44 ){
+							game::QuestObjective o;
+							o.hunt = Rd<uint32_t>( b, p );
+							o.mob = (int)Rd<uint32_t>( b, p + 8 );
+							o.count = Rd<uint16_t>( b, p + 16 );
+							o.total = Rd<uint16_t>( b, p + 18 );
+							o.name.assign( reinterpret_cast<const char*>( b + p + 20 ), strnlen( reinterpret_cast<const char*>( b + p + 20 ), 24 ) );
+							q.objectives.push_back( o );
+						}
+						g_quests[q.id] = q;
+					}
+				}
+				break;
+			case 0x09F9: // ZC_ADD_QUEST_EX: id, estado, tempo, prazo, nobj; { caça, raça, mob, nvmin, nvmax, atual, nome[24] }
+				if( len >= 17 ){
+					game::Quest q;
+					q.id = (int)Rd<uint32_t>( b, 2 );
+					q.state = b[6];
+					q.end = Rd<uint32_t>( b, 11 );
+					int objs = Rd<uint16_t>( b, 15 );
+					for( size_t p = 17, k = 0; (int)k < objs && p + 42 <= len; k++, p += 42 ){
+						game::QuestObjective o;
+						o.hunt = Rd<uint32_t>( b, p );
+						o.mob = (int)Rd<uint32_t>( b, p + 8 );
+						o.count = Rd<uint16_t>( b, p + 16 );
+						o.name.assign( reinterpret_cast<const char*>( b + p + 18 ), strnlen( reinterpret_cast<const char*>( b + p + 18 ), 24 ) );
+						q.objectives.push_back( o );
+					}
+					g_quests[q.id] = q;
+				}
+				break;
+			case 0x08FE: // ZC_HUNTING_QUEST_INFO: { caça, mob, total, atual }
+				for( size_t p = 4; p + 12 <= len; p += 12 ){
+					if( game::QuestObjective* o = FindHunt( Rd<uint32_t>( b, p ) ) ){
+						o->total = Rd<uint16_t>( b, p + 8 );
+						o->count = Rd<uint16_t>( b, p + 10 );
+					}
+				}
+				break;
+			case 0x09FA: // ZC_UPDATE_MISSION_HUNT_EX: n; { quest, caça, total, atual }
+				for( size_t p = 6; p + 12 <= len; p += 12 ){
+					if( game::QuestObjective* o = FindHunt( Rd<uint32_t>( b, p + 4 ) ) ){
+						o->total = Rd<uint16_t>( b, p + 8 );
+						o->count = Rd<uint16_t>( b, p + 10 );
+					}
+				}
+				break;
+			case 0x02B4: // ZC_DEL_QUEST
+				if( len >= 6 ) g_quests.erase( (int)Rd<uint32_t>( b, 2 ) );
+				break;
+			case 0x02B7: // ZC_ACTIVE_QUEST: id, ativa
+				if( len >= 7 ){
+					auto q = g_quests.find( (int)Rd<uint32_t>( b, 2 ) );
+					if( q != g_quests.end() ) q->second.state = b[6] ? 1 : 0;
+				}
 				break;
 			case 0x02D9: // ZC_CONFIG: tipo, valor
 				if( len >= 10 && Rd<uint32_t>( b, 2 ) == 0 ) g_showEquip = Rd<uint32_t>( b, 6 ) != 0;
@@ -586,7 +663,8 @@ namespace {
 	constexpr uintptr_t OFS_BUTTON_IMAGE = 0xBC;   // std::string da imagem normal do botão
 	uintptr_t g_menuWnd = 0;                       // última janela lida (para o retângulo no meio do quadro)
 
-	uintptr_t MenuWindow(){
+	// UIWindowMgr::GetWindow(id), conferindo a classe pela vtable
+	uintptr_t WindowById( int id, uintptr_t expectVt ){
 		static int sigOk = -1;
 		if( sigOk < 0 ){
 			const uint8_t sig[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C };
@@ -595,11 +673,15 @@ namespace {
 		if( !sigOk ) return 0;
 		uintptr_t w = 0, vt = 0;
 		__try{
-			w = reinterpret_cast<uintptr_t( __thiscall* )( void*, int )>( FN_GET_WINDOW )( reinterpret_cast<void*>( G_WINDOW_MGR ), WND_MENUICON );
+			w = reinterpret_cast<uintptr_t( __thiscall* )( void*, int )>( FN_GET_WINDOW )( reinterpret_cast<void*>( G_WINDOW_MGR ), id );
 		}__except( EXCEPTION_EXECUTE_HANDLER ){
 			return 0;
 		}
-		return w != 0 && Peek( w, vt ) && vt == VT_MENUICON ? w : 0;
+		return w != 0 && Peek( w, vt ) && vt == expectVt ? w : 0;
+	}
+
+	uintptr_t MenuWindow(){
+		return WindowById( WND_MENUICON, VT_MENUICON );
 	}
 
 	bool ReadStdString( uintptr_t a, std::string& out ){
@@ -667,6 +749,61 @@ bool game::ReadMenu( MenuState& m ){
 	uintptr_t head = 0, root = 0;
 	if( m.open && Peek( w + OFS_MENU_ICONS, head ) && head != 0 && Peek( head + 4, root ) ) MenuIcons( root, m.rect, m.icons, 0 );
 	return true;
+}
+
+std::vector<game::Quest> game::Quests(){
+	std::lock_guard<std::mutex> g( g_lock );
+	std::vector<Quest> out;
+	for( const auto& kv : g_quests ) out.push_back( kv.second );
+	return out;
+}
+
+void game::SetQuestActive( int id, bool active ){
+	uint8_t p[7] = { 0xB6, 0x02 };
+	memcpy( p + 2, &id, 4 );
+	p[6] = active ? 1 : 0;
+	SendPacket( p, sizeof( p ) );
+}
+
+namespace {
+	constexpr uintptr_t VT_QUEST = 0x1029D30;     // CUIRenewQuestUI (Alt+U; não fica no mapa por id do GetWindow)
+	constexpr uintptr_t OFS_CHILDREN = 0x50;      // std::list<UIWindow*> dos filhos
+	constexpr uintptr_t OFS_MGR_WINDOWS = 0x17C;  // std::list<UIWindow*> das janelas abertas (UIWindowMgr::AddWindow 0xA15660)
+
+	// Janela aberta da classe (vtable) na lista do gerenciador
+	uintptr_t OpenWindow( uintptr_t vt ){
+		uintptr_t head = 0, node = 0;
+		if( !Peek( G_WINDOW_MGR + OFS_MGR_WINDOWS, head ) || head == 0 || !Peek( head, node ) ) return 0;
+		for( int i = 0; i < 512 && node != 0 && node != head; i++ ){
+			uintptr_t w = 0, v = 0;
+			if( Peek( node + 8, w ) && w != 0 && Peek( w, v ) && v == vt ) return w;
+			if( !Peek( node, node ) ) break;
+		}
+		return 0;
+	}
+}
+
+bool game::QuestWindowRect( client::WndRect& r ){
+	if( !g_sessionOk ) return false;
+	uintptr_t w = OpenWindow( VT_QUEST );
+	if( w == 0 || !WindowRect( w, r ) ) return false;
+	return true;
+}
+
+bool game::QuestCloseRect( client::WndRect& r ){
+	uintptr_t w = g_sessionOk ? OpenWindow( VT_QUEST ) : 0;
+	client::WndRect wr;
+	if( w == 0 || !WindowRect( w, wr ) ) return false;
+	uintptr_t head = 0, node = 0;
+	if( !Peek( w + OFS_CHILDREN, head ) || head == 0 || !Peek( head, node ) ) return false;
+	for( int i = 0; i < 64 && node != 0 && node != head; i++ ){
+		uintptr_t child = 0;
+		std::string image;
+		if( Peek( node + 8, child ) && ReadStdString( child + OFS_BUTTON_IMAGE, image ) && image.find( "btn_close" ) != std::string::npos
+			&& ChildRect( child, wr, r ) ) return true;
+		if( !Peek( node, node ) ) break;
+	}
+	return false;
 }
 
 bool game::MenuRect( client::WndRect& r ){

@@ -1643,6 +1643,8 @@ void ui::Draw( IDirect3DDevice9* dev, const NativeFrame& frame ){
 	g_hasLayout = true;
 }
 
+namespace { void ReleaseQuestImages(); }
+
 void ui::OnDeviceLost(){
 	gfx::Release( g_logo );
 	gfx::Release( g_glow );
@@ -1661,7 +1663,359 @@ void ui::OnDeviceLost(){
 	g_zeroJobs.clear();
 	for( auto& kv : g_zeroMenu ) gfx::Release( kv.second );
 	g_zeroMenu.clear();
+	ReleaseQuestImages();
 	gfx::OnDeviceLost();
+}
+
+// ======================================================================== quests (Zero)
+namespace {
+	// Fundo 592x435 (os 28 px da esquerda são das abas verticais, 28x358 em 1,24); lista 271x36 em 32,75;
+	// detalhes em 312,25 (280x373); rodapé 398..435. Posições tiradas do UIRenewQuestWnd do cliente Zero.
+	constexpr float QW = 592, QH = 435, Q_LIST_X = 32, Q_LIST_Y = 75, Q_ROW_W = 271, Q_ROW_H = 36, Q_LIST_BOTTOM = 397;
+	constexpr float Q_INFO_X = 312, Q_INFO_Y = 25, Q_INFO_W = 272;
+	const D3DCOLOR Q_TEXT = Rgba( 34, 34, 34, 1.0f ), Q_MUTED = Rgba( 110, 118, 134, 1.0f ), Q_NAVY = Rgba( 24, 44, 104, 1.0f );
+
+	struct QuestText { std::wstring title, summary, desc; std::string icon; };
+	std::map<int, QuestText> g_questText, g_newsText;
+	bool g_questTextLoaded = false;
+	std::map<std::wstring, gfx::Image> g_questImg; // img\zero\quest\<nome>.png
+
+	enum QLocal { Q_NONE = 0, Q_TAB0, Q_TAB1, Q_TAB2, Q_ROW, Q_FILTER, Q_SEARCH, Q_SEND, Q_CLOSE, Q_TITLE, Q_UP, Q_DOWN };
+	struct QHit { float x, y, w, h; int local; int value; };
+	struct {
+		int tab = 0;                 // 0 em andamento, 1 novidades, 2 em espera
+		int selected = 0;            // quest (ou novidade) selecionada
+		int filter = 0;              // 0 = todas; senão índice em Q_FILTERS
+		float scroll = 0;
+		std::wstring search;
+		bool searchFocus = false, prevDown = false;
+		std::vector<QHit> hits;
+		float x = 0, y = 0;
+		float nx = 0, ny = 0, nw = 0, nh = 0; // janela nativa (embaixo; parte dela sai da nossa)
+		input::Point title, close, neutral; // pontos da janela nativa
+		DWORD tick = 0;
+	} g_q;
+	struct QFilter { const char* icon; const wchar_t* name; };
+	const QFilter Q_FILTERS[] = { { "", L"Todas" }, { "ico_ep", L"Episódio" }, { "ico_mq", L"Principal" }, { "ico_jq", L"Classe" },
+		{ "ico_dq", L"Diária" }, { "ico_lq", L"Local" }, { "ico_ev", L"Evento" }, { "ico_gq", L"Guia" }, { "ico_nq", L"Outras" } };
+	constexpr int Q_FILTER_COUNT = sizeof( Q_FILTERS ) / sizeof( Q_FILTERS[0] );
+
+	std::wstring QuestUtf8( const std::string& s ){
+		std::wstring w;
+		int n = MultiByteToWideChar( CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0 );
+		w.assign( n, L'\0' );
+		if( n ) MultiByteToWideChar( CP_UTF8, 0, s.data(), (int)s.size(), &w[0], n );
+		for( size_t i; ( i = w.find( L"\\n" ) ) != std::wstring::npos; ) w.replace( i, 2, L"\n" );
+		return w;
+	}
+
+	void LoadQuestTable( const wchar_t* file, std::map<int, QuestText>& out ){
+		std::vector<unsigned char> data;
+		if( !vfs::Read( config::BaseDir() + file, data ) ) return;
+		std::string all( data.begin(), data.end() );
+		size_t p = 0;
+		while( p < all.size() ){
+			size_t e = all.find( '\n', p );
+			if( e == std::string::npos ) e = all.size();
+			std::string line = all.substr( p, e - p );
+			p = e + 1;
+			std::vector<std::string> f;
+			for( size_t a = 0, t; ; a = t + 1 ){
+				t = line.find( '\t', a );
+				f.push_back( line.substr( a, t == std::string::npos ? std::string::npos : t - a ) );
+				if( t == std::string::npos ) break;
+			}
+			if( f.size() < 5 ) continue;
+			QuestText q;
+			q.title = QuestUtf8( f[1] );
+			q.icon = f[2].substr( 0, f[2].rfind( '.' ) );
+			q.summary = QuestUtf8( f[3] );
+			q.desc = QuestUtf8( f[4] );
+			out[atoi( f[0].c_str() )] = q;
+		}
+	}
+
+	void ReleaseQuestImages(){
+		for( auto& kv : g_questImg ) gfx::Release( kv.second );
+		g_questImg.clear();
+	}
+
+	const gfx::Image* QuestImage( IDirect3DDevice9* dev, const std::wstring& name ){
+		auto it = g_questImg.find( name );
+		if( it == g_questImg.end() ){
+			gfx::Image& img = g_questImg[name];
+			std::wstring path = config::BaseDir() + L"img\\zero\\quest\\" + name + L".png";
+			if( vfs::Exists( path ) ) gfx::LoadImageFile( dev, path, img );
+			return img.tex ? &img : nullptr;
+		}
+		return it->second.tex ? &it->second : nullptr;
+	}
+
+	void QImg( IDirect3DDevice9* dev, const std::wstring& name, float x, float y ){
+		if( const gfx::Image* i = QuestImage( dev, name ) ) gfx::DrawImage( *i, x, y, (float)i->width, (float)i->height );
+	}
+
+	std::wstring Lower( std::wstring s ){
+		for( wchar_t& c : s ) c = (wchar_t)towlower( c );
+		return s;
+	}
+
+	std::wstring CodepageText( const std::string& s ){
+		std::wstring w;
+		int n = MultiByteToWideChar( config::Get().codepage, 0, s.data(), (int)s.size(), nullptr, 0 );
+		w.assign( n, L'\0' );
+		if( n ) MultiByteToWideChar( config::Get().codepage, 0, s.data(), (int)s.size(), &w[0], n );
+		return w;
+	}
+
+	// Texto com as cores do cliente (^RRGGBB, ^000000 = cor base), quebrado em palavras dentro de w.
+	// Tira as marcas de navegação (<NAVI>[Nome]<INFO>...</INFO></NAVI> vira "Nome"). Retorna a altura usada.
+	float QuestWrap( const std::wstring& raw, float x, float y, float w, float maxY, D3DCOLOR base ){
+		std::wstring s = raw;
+		for( size_t a; ( a = s.find( L"<NAVI>" ) ) != std::wstring::npos; ){
+			size_t b = s.find( L"</NAVI>", a );
+			if( b == std::wstring::npos ) break;
+			std::wstring in = s.substr( a + 6, b - a - 6 );
+			size_t info = in.find( L"<INFO>" );
+			if( info != std::wstring::npos ) in = in.substr( 0, info );
+			if( in.size() >= 2 && in.front() == L'[' && in.back() == L']' ) in = in.substr( 1, in.size() - 2 );
+			s.replace( a, b + 7 - a, in );
+		}
+		float lh = gfx::LineHeight( Font::ZeroSmall ) + 2, cx = x, cy = y;
+		D3DCOLOR cur = base;
+		std::wstring word;
+		auto flush = [&](){
+			if( word.empty() ) return;
+			float ww = gfx::TextWidth( Font::ZeroSmall, word );
+			if( cx > x && cx + ww > x + w ){ cx = x; cy += lh; }
+			if( cy + lh <= maxY ) gfx::Text( Font::ZeroSmall, word, cx, cy, cur, gfx::Left, 0, false );
+			cx += ww;
+			word.clear();
+		};
+		for( size_t i = 0; i < s.size(); i++ ){
+			wchar_t c = s[i];
+			if( c == L'^' && i + 6 < s.size() && iswxdigit( s[i + 1] ) ){
+				flush();
+				unsigned rgb = (unsigned)wcstoul( s.substr( i + 1, 6 ).c_str(), nullptr, 16 );
+				cur = rgb == 0 ? base : Rgba( ( rgb >> 16 ) & 255, ( rgb >> 8 ) & 255, rgb & 255, 1.0f );
+				i += 6;
+			}else if( c == L'\n' ){
+				flush(); cx = x; cy += lh;
+			}else if( c == L' ' ){
+				word += c; flush();
+			}else word += c;
+		}
+		flush();
+		return cy + lh - y;
+	}
+}
+
+void ui::DrawZeroQuestWindow( IDirect3DDevice9* dev, float nx, float ny, float nw, float nh ){
+	g_s = 1.0f;
+	gfx::SetUiScale( 1.0f );
+	if( !gfx::Begin( dev ) ) return;
+	if( !g_questTextLoaded ){
+		g_questTextLoaded = true;
+		LoadQuestTable( L"quests.txt", g_questText );
+		LoadQuestTable( L"novidades.txt", g_newsText );
+	}
+	float x = nx, y = ny;
+	if( GetTickCount() - g_q.tick > 1000 ){ g_q.searchFocus = false; input::SetTextCapture( false ); }
+	g_q.tick = GetTickCount();
+	g_q.x = x; g_q.y = y;
+	g_q.nx = nx; g_q.ny = ny; g_q.nw = nw; g_q.nh = nh;
+	g_q.title = { nx + 60, ny + 7 };
+	g_q.neutral = { nx + 200, ny + nh - 12 };
+	client::WndRect cr;
+	g_q.close = game::QuestCloseRect( cr ) ? input::Point{ cr.x + cr.w * 0.5f, cr.y + cr.h * 0.5f } : input::Point{ nx + nw - 40, ny + nh - 12 };
+	input::Point m = input::RealCursor();
+
+	// lista da aba atual (filtrada e buscada)
+	struct Row { int id; std::wstring title, sub; std::string icon; const game::Quest* q; };
+	std::vector<game::Quest> quests = game::Quests();
+	std::vector<Row> rows;
+	std::wstring needle = Lower( g_q.search );
+	auto accept = [&]( const std::string& icon, const std::wstring& title ){
+		if( g_q.filter > 0 ){
+			const char* want = Q_FILTERS[g_q.filter].icon;
+			bool known = false;
+			for( int k = 1; k < Q_FILTER_COUNT - 1; k++ ) known = known || icon == Q_FILTERS[k].icon;
+			if( strcmp( want, "ico_nq" ) == 0 ? known : icon != want ) return false;
+		}
+		return needle.empty() || Lower( title ).find( needle ) != std::wstring::npos;
+	};
+	if( g_q.tab == 1 ){
+		for( const auto& kv : g_newsText ) if( accept( kv.second.icon, kv.second.title ) ) rows.push_back( { kv.first, kv.second.title, kv.second.summary, kv.second.icon, nullptr } );
+	}else{
+		for( const game::Quest& q : quests ){
+			if( ( g_q.tab == 0 ) != ( q.state == 1 ) ) continue;
+			auto t = g_questText.find( q.id );
+			std::wstring title = t != g_questText.end() ? t->second.title : L"Missão " + std::to_wstring( q.id );
+			std::string icon = t != g_questText.end() ? t->second.icon : "";
+			if( !accept( icon, title ) ) continue;
+			std::wstring sub = t != g_questText.end() ? t->second.summary : L"";
+			if( !q.objectives.empty() ){
+				int done = 0;
+				for( const game::QuestObjective& o : q.objectives ) if( o.total > 0 && o.count >= o.total ) done++;
+				sub = std::to_wstring( done ) + L"/" + std::to_wstring( q.objectives.size() ) + L" objetivos" + ( sub.empty() ? L"" : L" · " + sub );
+			}
+			rows.push_back( { q.id, title, sub, icon, nullptr } );
+		}
+	}
+	for( Row& r : rows ) for( const game::Quest& q : quests ) if( q.id == r.id && g_q.tab != 1 ) r.q = &q;
+	bool hasSel = false;
+	for( const Row& r : rows ) hasSel = hasSel || r.id == g_q.selected;
+	if( !hasSel ) g_q.selected = rows.empty() ? 0 : rows[0].id;
+
+	// texto da busca
+	if( g_q.searchFocus ){
+		for( wchar_t c : input::TakeTyped() ){
+			if( c == L'\b' ){ if( !g_q.search.empty() ) g_q.search.pop_back(); }
+			else if( c == 13 || c == 27 ){ g_q.searchFocus = false; input::SetTextCapture( false ); }
+			else if( c >= 32 && g_q.search.size() < 24 ) g_q.search += c;
+		}
+	}
+	// cliques (ao soltar)
+	bool down = input::IsLeftDown();
+	float listH = Q_LIST_BOTTOM - Q_LIST_Y;
+	float maxScroll = std::max( 0.0f, rows.size() * Q_ROW_H - listH );
+	if( g_q.prevDown && !down ){
+		bool onSearch = false;
+		for( const QHit& h : g_q.hits ){
+			if( !Inside( m, h.x, h.y, h.w, h.h ) ) continue;
+			if( h.local >= Q_TAB0 && h.local <= Q_TAB2 ){ g_q.tab = h.local - Q_TAB0; g_q.scroll = 0; g_q.selected = 0; }
+			else if( h.local == Q_ROW ) g_q.selected = h.value;
+			else if( h.local == Q_FILTER ){ g_q.filter = ( g_q.filter + 1 ) % Q_FILTER_COUNT; g_q.scroll = 0; }
+			else if( h.local == Q_SEARCH ) onSearch = true;
+			else if( h.local == Q_SEND && g_q.selected > 0 ) game::SetQuestActive( g_q.selected, g_q.tab == 2 );
+			else if( h.local == Q_UP ) g_q.scroll -= Q_ROW_H;
+			else if( h.local == Q_DOWN ) g_q.scroll += Q_ROW_H;
+		}
+		if( onSearch != g_q.searchFocus ){ g_q.searchFocus = onSearch; input::SetTextCapture( onSearch ); }
+	}
+	g_q.prevDown = down;
+	g_q.hits.clear();
+	if( Inside( m, x + Q_LIST_X, y + Q_LIST_Y, Q_ROW_W, listH ) ) g_q.scroll -= input::TakeWheel() / 120.0f * Q_ROW_H;
+	g_q.scroll = std::min( std::max( g_q.scroll, 0.0f ), maxScroll );
+
+	// fundo, abas e título
+	QImg( dev, L"bg", x, y );
+	static const wchar_t* TABS[3] = { L"tab_active", L"tab_news", L"tab_inactive" };
+	QImg( dev, TABS[g_q.tab], x + 1, y + 24 );
+	for( int t = 0; t < 3; t++ ) g_q.hits.push_back( { x + 1, y + 24 + t * 119.0f, 28, 119, Q_TAB0 + t, 0 } );
+	gfx::TextOutline( Font::ZeroName, L"Missões", x + 40, y + 5, Rgba( 255, 255, 255, 1.0f ), Rgba( 40, 70, 150, 1.0f ) );
+	g_q.hits.push_back( { x + 28, y, QW - 28, 22, Q_TITLE, 0 } );
+
+	// filtro (clique troca a categoria) e busca
+	gfx::Text( Font::ZeroSmall, Q_FILTERS[g_q.filter].name, x + 40, y + 31, Q_TEXT, gfx::Left, 70, false );
+	g_q.hits.push_back( { x + 35, y + 28, 96, 18, Q_FILTER, 0 } );
+	std::wstring shown = g_q.search + ( g_q.searchFocus && ( GetTickCount() / 500 ) % 2 ? L"|" : L"" );
+	if( shown.empty() && !g_q.searchFocus ) gfx::Text( Font::ZeroSmall, L"Buscar...", x + 139, y + 31, Q_MUTED, gfx::Left, 110, false );
+	else gfx::Text( Font::ZeroSmall, shown, x + 139, y + 31, Q_TEXT, gfx::Left, 112, false );
+	g_q.hits.push_back( { x + 134, y + 28, 146, 18, Q_SEARCH, 0 } );
+	static const wchar_t* HEADERS[3] = { L"Missões em andamento", L"Novidades", L"Missões em espera" };
+	gfx::Text( Font::ZeroSmall, HEADERS[g_q.tab] + std::wstring( L" (" ) + std::to_wstring( rows.size() ) + L")", x + 37, y + 56, Q_NAVY, gfx::Left, 236, false );
+
+	// lista
+	float ly = y + Q_LIST_Y - g_q.scroll;
+	for( const Row& r : rows ){
+		if( ly + Q_ROW_H > y + Q_LIST_Y && ly < y + Q_LIST_BOTTOM ){
+			bool sel = r.id == g_q.selected;
+			bool vis = ly >= y + Q_LIST_Y && ly + Q_ROW_H <= y + Q_LIST_BOTTOM;
+			if( vis ){
+				QImg( dev, sel ? L"img_quest_bg_selected" : L"img_quest_bg_unselected", x + Q_LIST_X, ly );
+				std::wstring icon( r.icon.begin(), r.icon.end() );
+				if( !icon.empty() ) QImg( dev, icon + ( g_q.tab == 2 ? L"_inactive" : L"" ), x + Q_LIST_X + 4, ly + 6 );
+				gfx::Text( Font::ZeroSmall, r.title, x + Q_LIST_X + 36, ly + 4, sel ? Q_NAVY : Q_TEXT, gfx::Left, Q_ROW_W - 42, false );
+				gfx::Text( Font::ZeroSmall, r.sub, x + Q_LIST_X + 36, ly + 19, Q_MUTED, gfx::Left, Q_ROW_W - 42, false );
+				QImg( dev, L"img_quest_line", x + Q_LIST_X, ly + Q_ROW_H - 1 );
+				g_q.hits.push_back( { x + Q_LIST_X, ly, Q_ROW_W, Q_ROW_H, Q_ROW, r.id } );
+			}
+		}
+		ly += Q_ROW_H;
+	}
+	if( rows.empty() ) gfx::Text( Font::ZeroSmall, L"Nenhuma missão.", x + Q_LIST_X + Q_ROW_W * 0.5f, y + Q_LIST_Y + 14, Q_MUTED, gfx::Center, 0, false );
+	if( maxScroll > 0 ){
+		// barra de rolagem fina entre a lista e os detalhes
+		float th = std::max( 20.0f, listH * listH / ( rows.size() * Q_ROW_H ) );
+		float ty = y + Q_LIST_Y + ( listH - th ) * ( g_q.scroll / maxScroll );
+		gfx::Rect( x + 304, ty, 5, th, Rgba( 150, 170, 210, 0.9f ) );
+		g_q.hits.push_back( { x + 303, y + Q_LIST_Y, 8, ty - y - Q_LIST_Y, Q_UP, 0 } );
+		g_q.hits.push_back( { x + 303, ty + th, 8, y + Q_LIST_BOTTOM - ty - th, Q_DOWN, 0 } );
+	}
+
+	// detalhes
+	const Row* sel = nullptr;
+	for( const Row& r : rows ) if( r.id == g_q.selected ) sel = &r;
+	if( sel ){
+		float dx = x + Q_INFO_X + 8, dw = Q_INFO_W - 18, dy = y + Q_INFO_Y + 9;
+		gfx::Text( Font::ZeroName, sel->title, dx, dy, Q_NAVY, gfx::Left, dw, false );
+		dy += 34;
+		const std::map<int, QuestText>& table = g_q.tab == 1 ? g_newsText : g_questText;
+		auto t = table.find( sel->id );
+		float bottom = y + Q_LIST_BOTTOM - 4;
+		if( sel->q && !sel->q->objectives.empty() ){
+			gfx::Text( Font::ZeroSmall, L"Objetivos", dx, dy, Q_NAVY, gfx::Left, 0, false );
+			dy += 15;
+			for( const game::QuestObjective& o : sel->q->objectives ){
+				bool ok = o.total > 0 && o.count >= o.total;
+				gfx::Text( Font::ZeroSmall, CodepageText( o.name ), dx + 8, dy, ok ? Rgba( 40, 140, 60, 1.0f ) : Q_TEXT, gfx::Left, dw - 70, false );
+				gfx::Text( Font::ZeroSmall, std::to_wstring( o.count ) + L" / " + std::to_wstring( o.total ), dx + dw, dy, ok ? Rgba( 40, 140, 60, 1.0f ) : Q_TEXT, gfx::Right, 0, false );
+				dy += 15;
+			}
+			dy += 6;
+		}
+		if( sel->q && sel->q->end > 0 ){
+			time_t end = (time_t)sel->q->end;
+			struct tm lt;
+			localtime_s( &lt, &end );
+			wchar_t buf[64];
+			wcsftime( buf, 64, L"Prazo: %d/%m %H:%M", &lt );
+			gfx::Text( Font::ZeroSmall, buf, dx, dy, Rgba( 190, 60, 50, 1.0f ), gfx::Left, 0, false );
+			dy += 18;
+		}
+		if( t != table.end() ){
+			if( !t->second.summary.empty() && g_q.tab != 1 ){
+				dy += QuestWrap( t->second.summary, dx, dy, dw, bottom, Q_NAVY ) + 6;
+			}
+			QuestWrap( t->second.desc, dx, dy, dw, bottom, Q_TEXT );
+		}
+	}
+
+	// rodapé: mandar para andamento / espera
+	if( g_q.tab != 1 ){
+		std::wstring b = g_q.tab == 0 ? L"btn_inactive" : L"btn_active";
+		float bx = x + QW - 96 - 12, by = y + QH - 32;
+		bool can = sel != nullptr;
+		bool hover = can && Hovered( bx, by, 96, 27 );
+		QImg( dev, b + ( !can ? L"_disabled" : hover ? ( down ? L"_pressed" : L"_mouseon" ) : L"_normal" ), bx, by );
+		if( can ) g_q.hits.push_back( { bx, by, 96, 27, Q_SEND, 0 } );
+	}
+	// fechar (no canto do título)
+	{
+		float bx = x + QW - 24, by = y + 4;
+		bool hover = Hovered( bx, by, 16, 16 );
+		QImg( dev, hover ? ( down ? L"btn_close_pressed" : L"btn_close_mouseon" ) : L"btn_close_normal", bx, by );
+		g_q.hits.push_back( { bx, by, 16, 16, Q_CLOSE, 0 } );
+	}
+	gfx::End();
+}
+
+bool ui::ZeroQuestRedirect( const input::Point& real, input::Point& target ){
+	if( GetTickCount() - g_q.tick > 250 ) return false;
+	if( !Inside( real, g_q.x, g_q.y, QW, QH ) ){
+		if( !Inside( real, g_q.nx, g_q.ny, g_q.nw, g_q.nh ) ) return false;
+		target = g_q.neutral; // pedaço da nativa fora da nossa: controles invisíveis não recebem o clique
+		return true;
+	}
+	for( auto it = g_q.hits.rbegin(); it != g_q.hits.rend(); ++it ){
+		if( !Inside( real, it->x, it->y, it->w, it->h ) ) continue;
+		if( it->local == Q_CLOSE ){ target = g_q.close; return true; }
+		if( it->local == Q_TITLE ){ target = { g_q.title.x + ( real.x - it->x ) * 0.25f, g_q.title.y }; return true; } // arrastar
+		break;
+	}
+	target = g_q.neutral; // o resto é nosso: o clique não vai para o mapa
+	return true;
 }
 
 namespace { bool GameWindowsRedirect( const input::Point& real, input::Point& target ); }
@@ -1672,6 +2026,7 @@ bool ui::Redirect( const input::Point& real, input::Point& target ){
 		client::WndRect br;
 		if( client::InGame() && game::BasicInfoRect( br ) && StatusHudRedirect( real, target, (float)br.x, (float)br.y ) ) return true;
 		if( client::InGame() && ZeroMenuRedirect( real, target ) ) return true;
+		if( client::InGame() && ZeroQuestRedirect( real, target ) ) return true;
 	}
 	if( !config::CustomActive() ){
 		return false;

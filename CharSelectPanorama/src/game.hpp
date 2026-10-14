@@ -84,6 +84,25 @@ namespace game {
 		std::vector<MenuButton> icons;
 	};
 	std::string CurrentMap(); // mapa atual ("prontera"); vazio fora do jogo
+
+	// Quests (pacotes 0x09F8 lista, 0x09F9/0x08FE nova, 0x02B4 removida, 0x09FA caça, 0x02B7 estado)
+	struct QuestObjective {
+		uint32_t hunt = 0;       // quest * 1000 + índice
+		int mob = 0;
+		std::string name;        // nome do monstro/objetivo (codepage do cliente)
+		int count = 0, total = 0;
+	};
+	struct Quest {
+		int id = 0;
+		int state = 0;           // 0 em espera, 1 em andamento, 2 concluída
+		uint32_t end = 0;        // prazo (unix), 0 = sem prazo
+		std::vector<QuestObjective> objectives;
+	};
+	std::vector<Quest> Quests();
+	void SetQuestActive( int id, bool active ); // CZ_ACTIVE_QUEST
+	// Janela de quests nativa (CUIRenewQuestUI) e o botão de fechar dela
+	bool QuestWindowRect( client::WndRect& out );  // aberta (lista de janelas do gerenciador)
+	bool QuestCloseRect( client::WndRect& out );
 	bool ReadMenu( MenuState& out );
 	bool MenuRect( client::WndRect& out ); // retângulo atual da janela lida por ReadMenu
 	void PlaceMenu( int x, int y ); // move a janela nativa (os filhos acompanham)

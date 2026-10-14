@@ -31,6 +31,7 @@ Como usar
      Inventário                     Alt+E com abas, busca e grade
      Habilidades                    Alt+S em árvore por classe
      Menu                           menu de ícones do Ragnarok Zero (canto inferior direito)
+     Quests                         Alt+U no estilo do Ragnarok Zero (abas, filtro, busca e detalhes)
    O que ficar desmarcado continua como no Ragnarok original. As marcações são lembradas.
 4. Clique em APLICAR INTERFACE.
 5. O resultado vai para a pasta "Aplicados\<data e hora>\" (botão ABRIR PASTA APLICADOS):
@@ -45,7 +46,7 @@ Se houver uma d3d9.dll ou codex_ui.dll antiga da interface na pasta do cliente, 
 Só funciona na versão do cliente Codex.exe 2025-06-04; outras versões são recusadas.
 
 Linha de comando (automação)
-  "Aplicador Codex.exe" <executável hexed> [/semgrf] [/alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu]
+  "Aplicador Codex.exe" <executável hexed> [/semgrf] [/alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests]
   Sem /alteracoes, aplica todas.
   Gera em Aplicados\<data e hora>\ e grava o registro em aplicador.log (código 0 = sucesso).
 

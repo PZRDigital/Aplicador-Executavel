@@ -54,6 +54,7 @@ namespace {
 		{ embutir::INVENTARIO, L"Inventário", L"Alt+E com abas, busca e grade", true, nullptr },
 		{ embutir::HABILIDADES, L"Habilidades", L"Alt+S em árvore por classe", true, nullptr },
 		{ embutir::MENU, L"Menu", L"Menu de ícones do Ragnarok Zero", true, nullptr },
+		{ embutir::QUESTS, L"Quests", L"Alt+U no estilo do Ragnarok Zero", true, nullptr },
 	};
 	const int N_OPCOES = sizeof( g_opcoes ) / sizeof( g_opcoes[0] );
 
@@ -436,9 +437,9 @@ namespace {
 				g_entrada = Controle( L"EDIT", L"", ES_AUTOHSCROLL, Ret( 50, 185, 486, 20 ), ID_ENTRADA, g_texto );
 				g_procurar = Controle( L"BUTTON", L"PROCURAR", BS_OWNERDRAW, Ret( 558, 176, 122, 36 ), ID_PROCURAR, g_botao );
 				for( int i = 0; i < N_OPCOES; i++ ){
-					int col = i < 6 ? 0 : 1, lin = i % 6;
+					int col = i < 7 ? 0 : 1, lin = i % 7; // 7 por coluna
 					g_opcoes[i].h = Controle( L"BUTTON", g_opcoes[i].nome, BS_OWNERDRAW,
-						Ret( 32 + col * 330, 452 + lin * 48, 318, 46 ), ID_OPCAO + i, g_botao );
+						Ret( 32 + col * 330, 452 + lin * 46, 318, 44 ), ID_OPCAO + i, g_botao );
 				}
 				g_aplicar = Controle( L"BUTTON", L"APLICAR INTERFACE", BS_OWNERDRAW, Ret( 20, 782, W - 40, 54 ), ID_APLICAR, g_botaoGrande );
 				g_log = Controle( L"EDIT", L"", ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL, Ret( 30, 876, W - 52, 86 ), ID_LOG, g_mono );
@@ -555,11 +556,11 @@ int WINAPI wWinMain( HINSTANCE inst, HINSTANCE, LPWSTR, int show ){
 		for( int i = 2; i < argc; i++ ){
 			if( _wcsicmp( argv[i], L"/semgrf" ) == 0 ) grf = false;
 			if( _wcsnicmp( argv[i], L"/alteracoes=", 12 ) == 0 ){
-				// ex.: /alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu
+				// ex.: /alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests
 				std::wstring v = argv[i] + 12;
 				alt = 0;
-				const wchar_t* nomes[] = { L"login", L"selecao", L"criacao", L"chave", L"combate", L"fade", L"status", L"item", L"", L"equip", L"inventario", L"habilidades", L"menu" };
-				for( int k = 0; k < 13; k++ ) if( nomes[k][0] ) if( v.find( nomes[k] ) != std::wstring::npos ) alt |= 1u << k;
+				const wchar_t* nomes[] = { L"login", L"selecao", L"criacao", L"chave", L"combate", L"fade", L"status", L"item", L"", L"equip", L"inventario", L"habilidades", L"menu", L"quests" };
+				for( int k = 0; k < 14; k++ ) if( nomes[k][0] ) if( v.find( nomes[k] ) != std::wstring::npos ) alt |= 1u << k;
 			}
 		}
 		_wfopen_s( &g_arqLog, ( PastaDoApp() + L"aplicador.log" ).c_str(), L"w, ccs=UTF-8" );

@@ -1047,6 +1047,8 @@ namespace {
 	bool g_hasBasic = false, g_basicDrawn = false, g_itemDrawn = false;
 	game::MenuState g_menu;            // menu de ícones nativo (escondido embaixo do menu do Zero)
 	bool g_hasMenu = false, g_menuDrawn = false;
+	client::WndRect g_questRect;         // janela de quests nativa (escondida embaixo da do Zero)
+	bool g_hasQuest = false, g_questDrawn = false;
 	bool g_skinFills = false; // dentro do jogo com a skin escura
 	client::WndRect g_basicRect;
 	client::WndRect g_gageRect;     // barra de HP/SP embaixo do personagem (UIPlayerGage)
@@ -1337,7 +1339,7 @@ namespace {
 		// Alt+V recria/redimensiona a barra de status no meio do quadro: janela e retângulo de agora
 		// (senão a nativa aparece por um quadro)
 		g_hasBasic = GameHudOn( config::FEAT_HUD ) && game::BasicInfoRect( g_basicRect );
-		if( ( !g_hasBasic && !g_hasMenu && !g_hasGage && g_partyCount == 0 && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
+		if( ( !g_hasBasic && !g_hasMenu && !g_hasQuest && !g_hasGage && g_partyCount == 0 && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
 		if( upData != nullptr ) AccumulateBounds( info, upData, upStride, VertexCount( info.type, info.primCount ) );
 		else BoundsFromStream( dev, info, startVertex );
 		if( !info.hasBounds ) return false;
@@ -1386,6 +1388,19 @@ namespace {
 				}
 				return true;
 			}
+		}
+		// quests: a janela do Zero no lugar do primeiro bloco da nativa
+		if( g_hasQuest && Within( info, g_questRect, 1.0f ) ){
+			ReadCaller( info );
+			if( g_windowHash != 0 && g_drawHash == g_windowHash ){
+				if( !g_questDrawn ){
+					g_questDrawn = true;
+					ui::DrawZeroQuestWindow( dev, (float)g_questRect.x, (float)g_questRect.y, (float)g_questRect.w, (float)g_questRect.h );
+				}
+				return true;
+			}
+			if( g_questDrawn ) return FollowCursor( dev, info, upData, upStride );
+			return false;
 		}
 		// menu de ícones: o do Zero no lugar do primeiro bloco da janela nativa
 		if( g_hasMenu && Within( info, g_menu.rect, 1.0f ) ){
@@ -1512,7 +1527,8 @@ namespace {
 	}
 
 	void GameFrameEnd( IDirect3DDevice9* dev ){
-		g_menuDrawn = false;
+		g_menuDrawn = g_questDrawn = false;
+		g_hasQuest = GameHudOn( config::FEAT_QUESTWND ) && game::QuestWindowRect( g_questRect );
 		g_hasMenu = GameHudOn( config::FEAT_MENU ) && game::ReadMenu( g_menu );
 		if( g_hasMenu ){
 			// a janela nativa fica no canto superior esquerdo do menu do Zero (escondida embaixo dele)

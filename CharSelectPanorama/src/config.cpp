@@ -303,9 +303,9 @@ void config::Load(){
 		logger::Write( "AVISO: nenhuma imagem de cena valida; o fundo nao sera alterado" );
 	}
 
-	logger::Write( "Alteracoes ativas: login=%d selecao=%d criacao=%d chave=%d combate=%d fade=%d status=%d item=%d equip=%d inventario=%d habilidades=%d menu=%d",
+	logger::Write( "Alteracoes ativas: login=%d selecao=%d criacao=%d chave=%d combate=%d fade=%d status=%d item=%d equip=%d inventario=%d habilidades=%d menu=%d quests=%d",
 		Feature( FEAT_LOGIN ), Feature( FEAT_SELECT ), Feature( FEAT_MAKE ), Feature( FEAT_TOGGLE ), Feature( FEAT_COMBAT ), Feature( FEAT_FADE ),
-		Feature( FEAT_HUD ), Feature( FEAT_ITEMWND ), Feature( FEAT_EQUIPWND ), Feature( FEAT_INVWND ), Feature( FEAT_SKILLWND ), Feature( FEAT_MENU ) );
+		Feature( FEAT_HUD ), Feature( FEAT_ITEMWND ), Feature( FEAT_EQUIPWND ), Feature( FEAT_INVWND ), Feature( FEAT_SKILLWND ), Feature( FEAT_MENU ), Feature( FEAT_QUESTWND ) );
 	logger::Write( "Config: ativo=%d debug=%d modo=%ls imagens=%u mapa3d=%d (%ls)", s.enabled, s.debug, mode.c_str(),
 		(unsigned)s.images.size(), s.map3d, s.map3dDir.c_str() );
 }
@@ -338,7 +338,7 @@ namespace {
 		unsigned flags;
 	};
 #pragma pack( pop )
-	volatile CodexFeatures g_features = { { 'C', 'O', 'D', 'E', 'X', '_', 'F', 'E', 'A', 'T', '0', '1' }, 0x107Fu }; // padrão (publicar.sh): login a fade + barra de status e menu do Zero; janelas do jogo nativas
+	volatile CodexFeatures g_features = { { 'C', 'O', 'D', 'E', 'X', '_', 'F', 'E', 'A', 'T', '0', '1' }, 0x307Fu }; // padrão (publicar.sh): login a fade + barra de status, menu e quests do Zero
 }
 
 bool config::Feature( unsigned f ){
