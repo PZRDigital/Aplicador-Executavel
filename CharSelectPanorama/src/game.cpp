@@ -893,6 +893,30 @@ void game::FixChatIcons(){
 	}
 }
 
+void game::HideButtons(){
+	struct Rule { uintptr_t vt; const char* names[3]; };
+	static const Rule rules[] = {
+		{ 0x10174D4, { "itemslot", nullptr, nullptr } },                          // UIShortCutWnd
+		{ 0x101232C, { "btn_e_ability", "btn_e_change", "btn_e_off" } },          // UIEquipWnd
+	};
+	if( !g_sessionOk ) return;
+	for( const Rule& r : rules ){
+		uintptr_t w = OpenWindow( r.vt ), head = 0, node = 0;
+		if( w == 0 || !Peek( w + OFS_CHILDREN, head ) || head == 0 || !Peek( head, node ) ) continue;
+		for( int i = 0; i < 64 && node != 0 && node != head; i++ ){
+			uintptr_t child = 0;
+			std::string image;
+			int x = 0;
+			if( Peek( node + 8, child ) && ReadStdString( child + OFS_BUTTON_IMAGE, image ) && Peek( child + client::OFS_WND_X, x ) && x > -5000 ){
+				for( const char* n : r.names ){
+					if( n && image.find( n ) != std::string::npos ){ *reinterpret_cast<int*>( child + client::OFS_WND_X ) = -10000; break; }
+				}
+			}
+			if( !Peek( node, node ) ) break;
+		}
+	}
+}
+
 bool game::PetWindowRect( client::WndRect& r ){
 	uintptr_t w = g_sessionOk ? OpenWindow( VT_PETINFO ) : 0;
 	return w != 0 && WindowRect( w, r );
