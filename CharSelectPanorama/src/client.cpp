@@ -386,6 +386,128 @@ bool client::InstallFastFade( int durationMs ){
 	return true;
 }
 
+namespace {
+	// UIPlayerGage: vtable, slot 0 = destrutor (scalar deleting), slot 20 = OnDraw.
+	// O tipo em +0x9C escolhe o desenho; 7 não é a barra de HP/SP e continua nativo.
+	constexpr uintptr_t VT_PLAYER_GAGE = 0x100BE68;
+	constexpr uintptr_t PLAYER_GAGE_DTOR = 0x83B4F0, PLAYER_GAGE_DRAW = 0x854240;
+	constexpr uintptr_t OFS_GAGE_TYPE = 0x9C;
+	volatile uintptr_t g_playerGage = 0;
+
+	using GageDrawFn = void( __thiscall* )( void* );
+	using GageDtorFn = void*( __thiscall* )( void*, unsigned );
+
+	void __fastcall PlayerGageDraw( void* self, void* ){
+		if( *reinterpret_cast<int*>( reinterpret_cast<uintptr_t>( self ) + OFS_GAGE_TYPE ) == 7 ){
+			reinterpret_cast<GageDrawFn>( PLAYER_GAGE_DRAW )( self );
+			return;
+		}
+		g_playerGage = reinterpret_cast<uintptr_t>( self );
+	}
+
+	void* __fastcall PlayerGageDtor( void* self, void*, unsigned flags ){
+		if( g_playerGage == reinterpret_cast<uintptr_t>( self ) ) g_playerGage = 0;
+		return reinterpret_cast<GageDtorFn>( PLAYER_GAGE_DTOR )( self, flags );
+	}
+
+	// UIPcGage (membros do grupo, embaixo deles e na janela de grupo): +0x9C 0 = só HP, senão HP e SP
+	constexpr uintptr_t VT_PC_GAGE = 0x100BD90;
+	constexpr uintptr_t PC_GAGE_DTOR = 0x83B410, PC_GAGE_DRAW = 0x853E40;
+	constexpr int MAX_PC_GAGES = 64;
+	uintptr_t g_pcGages[MAX_PC_GAGES] = {};
+
+	void __fastcall PcGageDraw( void* self, void* ){
+		uintptr_t p = reinterpret_cast<uintptr_t>( self );
+		int free = -1;
+		for( int i = 0; i < MAX_PC_GAGES; i++ ){
+			if( g_pcGages[i] == p ) return;
+			if( g_pcGages[i] == 0 && free < 0 ) free = i;
+		}
+		if( free >= 0 ) g_pcGages[free] = p;
+	}
+
+	void* __fastcall PcGageDtor( void* self, void*, unsigned flags ){
+		uintptr_t p = reinterpret_cast<uintptr_t>( self );
+		for( uintptr_t& g : g_pcGages ) if( g == p ) g = 0;
+		return reinterpret_cast<GageDtorFn>( PC_GAGE_DTOR )( self, flags );
+	}
+
+	bool ReadPcGage( uintptr_t w, client::PartyGage& g ){
+		__try{
+			if( *reinterpret_cast<const uintptr_t*>( w ) != VT_PC_GAGE ) return false;
+			g.rect.x = *reinterpret_cast<const int*>( w + client::OFS_WND_X );
+			g.rect.y = *reinterpret_cast<const int*>( w + client::OFS_WND_Y );
+			// dentro de outra janela (grupo) a posição é relativa à mãe (+0x10): soma até a tela
+			uintptr_t parent = *reinterpret_cast<const uintptr_t*>( w + 0x10 );
+			for( int depth = 0; parent != 0 && depth < 8; depth++ ){
+				g.rect.x += *reinterpret_cast<const int*>( parent + client::OFS_WND_X );
+				g.rect.y += *reinterpret_cast<const int*>( parent + client::OFS_WND_Y );
+				parent = *reinterpret_cast<const uintptr_t*>( parent + 0x10 );
+			}
+			g.rect.w = *reinterpret_cast<const int*>( w + client::OFS_WND_WIDTH );
+			g.rect.h = *reinterpret_cast<const int*>( w + client::OFS_WND_HEIGHT );
+			g.withSp = *reinterpret_cast<const int*>( w + 0x9C ) != 0;
+			g.hp = *reinterpret_cast<const int*>( w + 0xA0 );
+			g.maxHp = *reinterpret_cast<const int*>( w + 0xA4 );
+			g.sp = *reinterpret_cast<const int*>( w + 0xA8 );
+			g.maxSp = *reinterpret_cast<const int*>( w + 0xAC );
+		}__except( EXCEPTION_EXECUTE_HANDLER ){
+			return false;
+		}
+		return g.rect.w > 0 && g.rect.h > 0;
+	}
+
+	void SetSlot( uintptr_t vt, int idx, void* fn ){
+		uintptr_t* slot = reinterpret_cast<uintptr_t*>( vt + idx * 4 );
+		DWORD old;
+		VirtualProtect( slot, 4, PAGE_READWRITE, &old );
+		*slot = reinterpret_cast<uintptr_t>( fn );
+		VirtualProtect( slot, 4, old, &old );
+	}
+}
+
+bool client::InstallPlayerGage(){
+	const uintptr_t* vt = reinterpret_cast<const uintptr_t*>( VT_PLAYER_GAGE );
+	if( vt[0] != PLAYER_GAGE_DTOR || vt[20] != PLAYER_GAGE_DRAW ){
+		logger::Write( "ERRO: UIPlayerGage diferente do esperado; barra de HP/SP nativa mantida" );
+		return false;
+	}
+	SetSlot( VT_PLAYER_GAGE, 0, reinterpret_cast<void*>( &PlayerGageDtor ) );
+	SetSlot( VT_PLAYER_GAGE, 20, reinterpret_cast<void*>( &PlayerGageDraw ) );
+	const uintptr_t* pvt = reinterpret_cast<const uintptr_t*>( VT_PC_GAGE );
+	if( pvt[0] == PC_GAGE_DTOR && pvt[20] == PC_GAGE_DRAW ){
+		SetSlot( VT_PC_GAGE, 0, reinterpret_cast<void*>( &PcGageDtor ) );
+		SetSlot( VT_PC_GAGE, 20, reinterpret_cast<void*>( &PcGageDraw ) );
+	}else{
+		logger::Write( "ERRO: UIPcGage diferente do esperado; barras do grupo continuam nativas" );
+	}
+	logger::Write( "Barras de HP/SP do personagem e do grupo: imagens no lugar das nativas" );
+	return true;
+}
+
+int client::PartyGages( PartyGage* out, int max ){
+	int n = 0;
+	for( uintptr_t w : g_pcGages ){
+		if( w != 0 && n < max && ReadPcGage( w, out[n] ) ) n++;
+	}
+	return n;
+}
+
+bool client::PlayerGageRect( WndRect& out ){
+	uintptr_t w = g_playerGage;
+	if( w == 0 ) return false;
+	__try{
+		if( *reinterpret_cast<const uintptr_t*>( w ) != VT_PLAYER_GAGE ) return false;
+		out.x = *reinterpret_cast<const int*>( w + OFS_WND_X );
+		out.y = *reinterpret_cast<const int*>( w + OFS_WND_Y );
+		out.w = *reinterpret_cast<const int*>( w + OFS_WND_WIDTH );
+		out.h = *reinterpret_cast<const int*>( w + OFS_WND_HEIGHT );
+	}__except( EXCEPTION_EXECUTE_HANDLER ){
+		return false;
+	}
+	return out.w > 0 && out.h > 0;
+}
+
 bool client::InGame(){
 	return g_inGame;
 }

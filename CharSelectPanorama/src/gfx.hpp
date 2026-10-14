@@ -21,6 +21,8 @@ namespace gfx {
 		SmallBold,
 		Button,     // Inter bold, botões
 		Name,       // Inter bold grande, nomes na lista
+		ZeroSmall,  // Tahoma 11 sem suavização (textos da interface do Ragnarok Zero)
+		ZeroName,   // Tahoma 13 negrito sem suavização (nome na barra de status do Zero)
 		COUNT
 	};
 
@@ -70,6 +72,8 @@ namespace gfx {
 	// Texto em UTF-16. Retorna a largura desenhada. maxWidth > 0 corta com reticências.
 	float Text( Font font, const std::wstring& text, float x, float y, D3DCOLOR color,
 		int align = Left, float maxWidth = 0.0f, bool shadow = true );
+	// Texto com contorno de 1 pixel (rótulos do cliente: cor + cor do contorno)
+	float TextOutline( Font font, const std::wstring& text, float x, float y, D3DCOLOR color, D3DCOLOR outline, int align = Left );
 	float TextWidth( Font font, const std::wstring& text );
 	float LineHeight( Font font );
 

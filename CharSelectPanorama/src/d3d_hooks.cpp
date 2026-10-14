@@ -1047,6 +1047,19 @@ namespace {
 	bool g_hasBasic = false, g_basicDrawn = false, g_itemDrawn = false;
 	bool g_skinFills = false; // dentro do jogo com a skin escura
 	client::WndRect g_basicRect;
+	client::WndRect g_gageRect;     // barra de HP/SP embaixo do personagem (UIPlayerGage)
+	bool g_hasGage = false, g_gageDrawn = false;
+	client::PartyGage g_party[32];     // barras do grupo (UIPcGage) deste quadro
+	bool g_partyDrawn[32] = {};
+	int g_partyCount = 0;
+
+	void DrawPlayerGage( IDirect3DDevice9* dev ){
+		game::Status st;
+		if( game::ReadStatus( st ) ){
+			ui::DrawGageBars( dev, (float)g_gageRect.x, (float)g_gageRect.y, (float)g_gageRect.w, (float)g_gageRect.h,
+				st.hp, st.maxHp, st.sp, st.maxSp, true, config::Get().playerBarDown );
+		}
+	}
 	std::map<uint32_t, IDirect3DTexture9*> g_itemImages; // ilustrações já vistas (por item)
 	constexpr float ILLU_X = 12, ILLU_Y = 11, ILLU_W = 74, ILLU_H = 101; // ilustração na janela nativa
 	constexpr UINT ILLU_TEX_W = 128, ILLU_TEX_H = 172;
@@ -1313,10 +1326,55 @@ namespace {
 
 	// true = o desenho do cliente é parte de uma janela substituída (não desenha)
 	bool GameWindowDraw( IDirect3DDevice9* dev, DrawInfo& info, const void* upData, UINT upStride, UINT startVertex, bool indexed ){
-		if( ( !g_hasBasic && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
+		if( ( !g_hasBasic && !g_hasGage && g_partyCount == 0 && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
 		if( upData != nullptr ) AccumulateBounds( info, upData, upStride, VertexCount( info.type, info.primCount ) );
 		else BoundsFromStream( dev, info, startVertex );
 		if( !info.hasBounds ) return false;
+		// barra embaixo do personagem: as imagens no lugar do bloco da janela nativa
+		if( g_hasGage && Within( info, g_gageRect, 1.0f ) ){
+			ReadCaller( info );
+			if( g_windowHash == 0 || g_drawHash == g_windowHash ){
+				if( !g_gageDrawn ){
+					g_gageDrawn = true;
+					DrawPlayerGage( dev );
+				}
+				return true;
+			}
+		}
+		for( int i = 0; i < g_partyCount; i++ ){
+			const client::PartyGage& g = g_party[i];
+			if( !Within( info, g.rect, 1.0f ) ) continue;
+			ReadCaller( info );
+			if( g_windowHash != 0 && g_drawHash != g_windowHash ) break;
+			if( !g_partyDrawn[i] ){
+				g_partyDrawn[i] = true;
+				ui::DrawGageBars( dev, (float)g.rect.x, (float)g.rect.y, (float)g.rect.w, (float)g.rect.h, g.hp, g.maxHp, g.sp, g.maxSp, g.withSp, 0.0f );
+			}
+			return true;
+		}
+		// barras dentro da janela de grupo: são pintadas na imagem da própria janela (sem bloco próprio).
+		// O bloco da janela que contém a barra é desenhado e a barra vai logo por cima.
+		bool covers = false;
+		for( int i = 0; i < g_partyCount && !covers; i++ ){
+			const client::PartyGage& g = g_party[i];
+			float cx = g.rect.x + g.rect.w * 0.5f, cy = g.rect.y + g.rect.h * 0.5f;
+			covers = !g_partyDrawn[i] && cx >= info.minX && cx <= info.maxX && cy >= info.minY && cy <= info.maxY;
+		}
+		if( covers ){
+			ReadCaller( info );
+			if( g_windowHash == 0 || g_drawHash == g_windowHash ){
+				if( upData != nullptr ) o_DrawPrimitiveUP( dev, info.type, info.primCount, upData, upStride );
+				else o_DrawPrimitive( dev, info.type, startVertex, info.primCount );
+				for( int i = 0; i < g_partyCount; i++ ){
+					const client::PartyGage& g = g_party[i];
+					float cx = g.rect.x + g.rect.w * 0.5f, cy = g.rect.y + g.rect.h * 0.5f;
+					if( g_partyDrawn[i] || cx < info.minX || cx > info.maxX || cy < info.minY || cy > info.maxY ) continue;
+					g_partyDrawn[i] = true;
+					ui::DrawGageBars( dev, (float)g.rect.x, (float)g.rect.y, (float)g.rect.w, (float)g.rect.h, g.hp, g.maxHp, g.sp, g.maxSp, g.withSp, 0.0f );
+				}
+				return true;
+			}
+		}
 		client::WndRect basic = g_basicRect;
 		basic.h += 10; // botão nativo de expandir, logo abaixo
 		bool inBasic = g_hasBasic && Within( info, basic, 1.0f );
@@ -1388,7 +1446,13 @@ namespace {
 			if( !g_basicDrawn ){
 				g_basicDrawn = true;
 				game::Status st;
-				if( game::ReadStatus( st ) ) ui::DrawStatusHud( dev, (float)g_basicRect.x, (float)g_basicRect.y, st );
+				if( game::ReadStatus( st ) ){
+					// barra de EXP do Zero embaixo da tela, na ordem da barra de status (janelas por cima dela)
+					D3DVIEWPORT9 vp;
+					dev->GetViewport( &vp );
+					ui::DrawExpBar( dev, (float)vp.Width, (float)vp.Height, st );
+					ui::DrawStatusHud( dev, (float)g_basicRect.x, (float)g_basicRect.y, st );
+				}
 			}
 			return true;
 		}
@@ -1418,8 +1482,11 @@ namespace {
 	}
 
 	void GameFrameEnd(){
-		g_basicDrawn = g_itemDrawn = g_equipDrawn = g_invDrawn = g_skillDrawn = false;
+		g_basicDrawn = g_itemDrawn = g_equipDrawn = g_invDrawn = g_skillDrawn = g_gageDrawn = false;
 		g_hasBasic = GameHudOn( config::FEAT_HUD ) && game::BasicInfoRect( g_basicRect );
+		g_hasGage = config::Get().playerBars && client::InGame() && client::PlayerGageRect( g_gageRect );
+		g_partyCount = config::Get().playerBars && client::InGame() ? client::PartyGages( g_party, 32 ) : 0;
+		for( bool& d : g_partyDrawn ) d = false;
 		client::WndRect r;
 		bool itemOn = GameHudOn( config::FEAT_ITEMWND ) && game::ItemWindowRect( r );
 		FrameItemWnd( g_itemWnd, itemOn, r );
@@ -1496,6 +1563,10 @@ namespace {
 
 	void OnFrameEnd( IDirect3DDevice9* dev ){
 		const config::Settings& cfg = config::Get();
+		if( g_hasGage && !g_gageDrawn ){
+			// janela vazia que o cliente não chegou a desenhar: barra por cima no fim do quadro
+			DrawPlayerGage( dev );
+		}
 		GameFrameEnd();
 		if( !g_sceneShown && ( client::IsSelectActive() || client::IsCreatingSelect() ) && config::CustomActive() && config::Feature( config::FEAT_SELECT )
 			&& cfg.mode == config::BackgroundMode::Replace ){

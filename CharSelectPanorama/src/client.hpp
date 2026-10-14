@@ -109,5 +109,16 @@ namespace client {
 	// "agora - início" em ms (sub eax, [0x1574D8C]). Os três pontos passam a chamar uma rotina
 	// que escala esse tempo para a duração pedida (0 = instantâneo).
 	bool InstallFastFade( int durationMs );
+	// Barra de HP/SP embaixo do próprio personagem (UIPlayerGage): o cliente deixa de desenhar e a
+	// DLL desenha as imagens no lugar. PlayerGageRect = janela da barra na tela (false se não existe).
+	bool InstallPlayerGage();
+	bool PlayerGageRect( WndRect& out );
+	// Barras de HP dos membros do grupo (UIPcGage): embaixo deles e dentro da janela de grupo
+	struct PartyGage {
+		WndRect rect;
+		int hp = 0, maxHp = 0, sp = 0, maxSp = 0;
+		bool withSp = false;
+	};
+	int PartyGages( PartyGage* out, int max );
 	void SetSelectedAction( int action, int frameMs = 110, int attackAction = -1, int attackEveryMs = 6000 );
 }

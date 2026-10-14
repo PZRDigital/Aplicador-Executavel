@@ -88,8 +88,19 @@ namespace {
 	bool g_prevDown = false;
 
 	gfx::Image g_logo, g_glow, g_gear, g_disc;
+	gfx::Image g_bars[4]; // HP cheia, HP vazia, SP cheia, SP vazia (img\barra_*.png)
+	bool g_barsTried = false;
 
-	// Ícones de classe (charselect\icones\<classe>.png, gerados por tools\icones_codex.py)
+	// Interface do Ragnarok Zero (UIRenewal): imagens em img\zero (tools\zero_ui.py).
+	// Posições e regras tiradas do cliente Zero (UIBasicInfoWnd no tema novo, UIHpSpGage e UIExpBar).
+	struct ZeroImages {
+		gfx::Image gaugeBg, hpNormal, hpDamage, hpDamageDeco, hpDeco, sp;
+		gfx::Image expBaseBg, expJobBg, expBase, expJob;
+		bool tried = false;
+	} g_zero;
+	std::map<int, gfx::Image> g_zeroJobs; // img\zero\job\icon_job_<classe>.png
+
+	// Ícones de classe: os do Ragnarok Zero (img\zero\job) ou, sem eles, charselect\icones\<classe>.png (tools\icones_codex.py)
 	std::map<int, gfx::Image> g_icons;
 	IDirect3DDevice9* g_iconDev = nullptr;
 
@@ -99,7 +110,9 @@ namespace {
 			return it->second.tex ? &it->second : nullptr;
 		}
 		gfx::Image& img = g_icons[job];
-		std::wstring path = config::BaseDir() + L"icones\\" + std::to_wstring( job ) + L".png";
+		// ícone do Ragnarok Zero (img\zero\job); classes que o Zero não tem usam o do Codex
+		std::wstring zero = config::BaseDir() + L"img\\zero\\job\\icon_job_" + std::to_wstring( job ) + L".png";
+		std::wstring path = vfs::Exists( zero ) ? zero : config::BaseDir() + L"icones\\" + std::to_wstring( job ) + L".png";
 		if( g_iconDev && vfs::Exists( path ) ){
 			gfx::LoadImageFile( g_iconDev, path, img );
 		}
@@ -1633,9 +1646,17 @@ void ui::OnDeviceLost(){
 	gfx::Release( g_glow );
 	gfx::Release( g_gear );
 	gfx::Release( g_disc );
+	for( gfx::Image& img : g_bars ) gfx::Release( img );
+	g_barsTried = false;
 	for( auto& kv : g_icons ) gfx::Release( kv.second );
 	g_icons.clear();
 	g_assetsTried = false;
+	gfx::Image* zero[] = { &g_zero.gaugeBg, &g_zero.hpNormal, &g_zero.hpDamage, &g_zero.hpDamageDeco, &g_zero.hpDeco, &g_zero.sp,
+		&g_zero.expBaseBg, &g_zero.expJobBg, &g_zero.expBase, &g_zero.expJob };
+	for( gfx::Image* img : zero ) gfx::Release( *img );
+	g_zero.tried = false;
+	for( auto& kv : g_zeroJobs ) gfx::Release( kv.second );
+	g_zeroJobs.clear();
 	gfx::OnDeviceLost();
 }
 
@@ -1835,23 +1856,58 @@ namespace {
 }
 
 namespace {
-	// Barra estilo Ragnarok Zero: moldura com o número no meio e a porcentagem à direita
-	void ZeroBar( float x, float y, float w, float h, long long cur, long long max, D3DCOLOR a, D3DCOLOR b ){
-		float ratio = max > 0 ? std::min( 1.0f, std::max( 0.0f, (float)cur / (float)max ) ) : 0.0f;
-		gfx::Rect( x - 2, y - 2, w + 4, h + 4, Rgba( 18, 34, 62, 0.95f ) );
-		gfx::Rect( x - 1, y - 1, w + 2, h + 2, Rgba( 206, 222, 240, 0.9f ) );
-		gfx::Rect( x, y, w, h, Rgba( 10, 18, 32, 1.0f ) );
-		if( ratio > 0 ){
-			gfx::RectV( x, y, w * ratio, h, a, b );
-			gfx::Rect( x, y, w * ratio, 1.0f, Rgba( 255, 255, 255, 0.35f ) );
+	const D3DCOLOR ZERO_WHITE = Rgba( 255, 255, 255, 1.0f );
+	const D3DCOLOR ZERO_NAME_OUTLINE = 0xFF2B2B2B, ZERO_GAUGE_OUTLINE = 0xFF3F4B62, ZERO_EXP_OUTLINE = 0xFF10193C;
+	const D3DCOLOR ZERO_JOB_TEXT = Rgba( 0, 240, 255, 1.0f );
+
+	void ZeroAssets( IDirect3DDevice9* dev ){
+		if( g_zero.tried ) return;
+		g_zero.tried = true;
+		struct { gfx::Image* img; const wchar_t* name; } files[] = {
+			{ &g_zero.gaugeBg, L"gze_bg" }, { &g_zero.hpNormal, L"gze_hp_normal" }, { &g_zero.hpDamage, L"gze_hp_damage" },
+			{ &g_zero.hpDamageDeco, L"gze_hp_damage_deco" }, { &g_zero.hpDeco, L"gze_hp_deco" }, { &g_zero.sp, L"gze_sp_normal" },
+			{ &g_zero.expBaseBg, L"bg_exp_base" }, { &g_zero.expJobBg, L"bg_exp_job" }, { &g_zero.expBase, L"gze_exp_base" },
+			{ &g_zero.expJob, L"gze_exp_job" },
+		};
+		for( auto& f : files ) gfx::LoadImageFile( dev, config::BaseDir() + L"img\\zero\\" + f.name + L".png", *f.img );
+	}
+
+	const gfx::Image* ZeroJobIcon( IDirect3DDevice9* dev, int job ){
+		auto it = g_zeroJobs.find( job );
+		if( it == g_zeroJobs.end() ){
+			gfx::Image& img = g_zeroJobs[job];
+			std::wstring path = config::BaseDir() + L"img\\zero\\job\\icon_job_" + std::to_wstring( job ) + L".png";
+			if( vfs::Exists( path ) ) gfx::LoadImageFile( dev, path, img );
+			return img.tex ? &img : nullptr;
 		}
-		wchar_t buf[64];
-		swprintf( buf, 64, L"%lld / %lld", cur, max );
-		float ty = y + ( h - gfx::LineHeight( Font::Small ) ) * 0.5f;
-		wchar_t pct[16];
-		swprintf( pct, 16, L"%d%%", max > 0 ? (int)( 100.0 * cur / max ) : 0 );
-		float pw = gfx::Text( Font::Small, pct, x + w - 3, ty, Rgba( 255, 255, 255, 1.0f ), gfx::Right );
-		gfx::Text( Font::Small, buf, x + ( w - pw - 6 ) * 0.5f, ty, Rgba( 255, 255, 255, 1.0f ), gfx::Center, w - pw - 8 );
+		return it->second.tex ? &it->second : nullptr;
+	}
+
+	// Parte esquerda da imagem, sem esticar (como a barra do cliente: largura proporcional ao valor)
+	void ZeroCrop( const gfx::Image& img, float x, float y, int w ){
+		if( img.tex == nullptr || w <= 0 ) return;
+		w = std::min( w, (int)img.width );
+		gfx::DrawImage( img, x, y, (float)w, (float)img.height, 0xFFFFFFFF, 0.0f, 0.0f, w / (float)img.width, 1.0f );
+	}
+
+	// Parte da imagem (sx0..sx1 em pixels) esticada em x..x+w
+	void ZeroStretch( const gfx::Image& img, float x, float y, float w, float h, float sx0, float sx1, float sh ){
+		if( img.tex == nullptr || w <= 0 ) return;
+		gfx::DrawImage( img, x, y, w, h, 0xFFFFFFFF, sx0 / img.width, 0.0f, sx1 / img.width, sh / img.height );
+	}
+
+	double Ratio( long long cur, long long max ){
+		if( max <= 0 ) return 0.0;
+		double r = (double)cur / (double)max;
+		return r < 0.0 ? 0.0 : ( r > 1.0 ? 1.0 : r );
+	}
+
+	// Linha de valores do medidor: atual (alinhado à direita em 134), " / máx" e porcentagem (à direita em 230)
+	void ZeroGaugeLine( float x, float y, long long cur, long long max ){
+		unsigned pct = (unsigned)( Ratio( cur, max ) * 100.0 );
+		gfx::TextOutline( Font::ZeroSmall, std::to_wstring( cur ), x + 134, y, ZERO_WHITE, ZERO_GAUGE_OUTLINE, gfx::Right );
+		gfx::TextOutline( Font::ZeroSmall, L" / " + std::to_wstring( max ), x + 135, y, ZERO_WHITE, ZERO_GAUGE_OUTLINE );
+		gfx::TextOutline( Font::ZeroSmall, std::to_wstring( pct ) + L"%", x + 230, y, ZERO_WHITE, ZERO_GAUGE_OUTLINE, gfx::Right );
 	}
 }
 
@@ -1860,27 +1916,97 @@ void ui::DrawStatusHud( IDirect3DDevice9* dev, float x, float y, const game::Sta
 	gfx::SetUiScale( 1.0f );
 	if( !gfx::Begin( dev ) ) return;
 	GameAssets( dev );
-	g_hudRect = { x, y, 220.0f, 74.0f }; // largura da janela nativa (a barra de atalhos fica colada à direita)
+	ZeroAssets( dev );
+	g_hudRect = { x, y, 237.0f, 63.0f }; // janela do tema novo do Zero
 	g_hudTick = GetTickCount();
 
-	// faixa escura atrás de nome e barras
-	gfx::RectH( x + 36, y + 2, 184, 18, Rgba( 6, 14, 30, 0.82f ), Rgba( 6, 14, 30, 0.25f ) );
-	gfx::Rect( x + 44, y + 20, 176, 36, Rgba( 6, 14, 30, 0.55f ) );
-	gfx::Rect( x, y + 57, 220, 17, Rgba( 6, 14, 30, 0.45f ) );
-	// losango dourado com o selo da classe
-	float cx = x + 26, cy = y + 30;
-	gfx::Triangle( cx - 25, cy, cx, cy - 25, cx + 25, cy, Rgba( 196, 150, 60, 1.0f ) );
-	gfx::Triangle( cx - 25, cy, cx + 25, cy, cx, cy + 25, Rgba( 150, 106, 34, 1.0f ) );
-	gfx::RoundRect( cx - 17, cy - 17, 34, 34, 5, Rgba( 20, 44, 92, 1.0f ), g_disc );
-	gfx::RoundRect( cx - 15, cy - 15, 30, 30, 4, Rgba( 46, 104, 184, 1.0f ), g_disc );
-	ClassBadge( cx, cy, 34, st.job, Rgba( 159, 178, 196, 0.8f ), 0, 0 );
+	// Medidor (UIHpSpGage) em 43,21: fundo, HP em +3,0 e SP em +3,21
+	float gx = x + 43, gy = y + 21;
+	if( g_zero.gaugeBg.tex ) gfx::DrawImage( g_zero.gaugeBg, gx, gy, (float)g_zero.gaugeBg.width, (float)g_zero.gaugeBg.height );
+	double hp = Ratio( st.hp, st.maxHp );
+	if( hp > 0.25 ){
+		ZeroCrop( g_zero.hpNormal, gx + 3, gy, (int)( g_zero.hpNormal.width * hp ) );
+	}else{
+		// HP baixo: barra vermelha; entre 4% e 25% com o brilho na ponta
+		int w = (int)( g_zero.hpDamage.width * hp );
+		ZeroCrop( g_zero.hpDamage, gx + 3, gy, w );
+		if( hp > 0.04 && w > 0 ){
+			int dw = (int)( g_zero.hpDamageDeco.width * 0.04 );
+			ZeroCrop( g_zero.hpDamageDeco, gx + 3 + w - dw, gy, dw );
+		}
+	}
+	ZeroCrop( g_zero.sp, gx + 3, gy + 21, (int)( g_zero.sp.width * Ratio( st.sp, st.maxSp ) ) );
+	if( g_zero.hpDeco.tex ) gfx::DrawImage( g_zero.hpDeco, x + 88, y + 35, (float)g_zero.hpDeco.width, (float)g_zero.hpDeco.height );
 
-	gfx::Text( Font::SmallBold, L"Lv." + std::to_wstring( st.baseLevel ) + L" " + st.name, x + 58, y + 3, Rgba( 255, 255, 255, 1.0f ), gfx::Left, 158 );
-	ZeroBar( x + 52, y + 22, 164, 14, st.hp, st.maxHp, Rgba( 70, 214, 70, 1.0f ), Rgba( 22, 150, 40, 1.0f ) );
-	ZeroBar( x + 52, y + 40, 164, 14, st.sp, st.maxSp, Rgba( 70, 140, 236, 1.0f ), Rgba( 26, 84, 196, 1.0f ) );
-	gfx::Text( Font::SmallBold, L"Peso: " + std::to_wstring( st.weight ) + L" / " + std::to_wstring( st.maxWeight ), x + 4, y + 58,
-		st.maxWeight > 0 && st.weight * 2 >= st.maxWeight ? Rgba( 255, 170, 70, 1.0f ) : Rgba( 255, 255, 255, 1.0f ) );
-	gfx::Text( Font::SmallBold, L"Zeny: " + Thousands( st.zeny ), x + 216, y + 58, Rgba( 120, 232, 90, 1.0f ), gfx::Right );
+	// Ícone grande da classe em 0,11 (por cima do medidor); sem ícone do Zero, o do Codex
+	if( const gfx::Image* icon = ZeroJobIcon( dev, st.job ) ){
+		gfx::DrawImage( *icon, x, y + 11, (float)icon->width, (float)icon->height );
+	}else{
+		ClassBadge( x + 26, y + 37, 44, st.job, Rgba( 159, 178, 196, 0.8f ), 0, 0 );
+	}
+
+	wchar_t name[96];
+	swprintf( name, 96, L"Nv. %d %ls", st.baseLevel, st.name.c_str() );
+	gfx::TextOutline( Font::ZeroName, name, x + 47, y + 5, ZERO_WHITE, ZERO_NAME_OUTLINE );
+	ZeroGaugeLine( x, y + 25, st.hp, st.maxHp );
+	ZeroGaugeLine( x, y + 42, st.sp, st.maxSp );
+	gfx::End();
+}
+
+void ui::DrawExpBar( IDirect3DDevice9* dev, float screenW, float screenH, const game::Status& st ){
+	if( !gfx::Begin( dev ) ) return;
+	ZeroAssets( dev );
+	const gfx::Image &bb = g_zero.expBaseBg, &bj = g_zero.expJobBg, &gb = g_zero.expBase, &gj = g_zero.expJob;
+	if( bb.tex == nullptr || bj.tex == nullptr || gb.tex == nullptr || gj.tex == nullptr ){
+		gfx::End();
+		return;
+	}
+	// UIExpBar: largura min(1004, tela - 20), centrada, colada embaixo; base à esquerda, classe à direita
+	float w = std::min( 1004.0f, screenW - 20.0f ), h = (float)bb.height;
+	float x = floorf( ( screenW - w ) * 0.5f ), y = screenH - h;
+	float half = floorf( w * 0.5f );
+	float tab = (float)( bb.width - gb.width ); // aba do nível (ponta direita da base, esquerda da classe)
+	float track = half - tab;
+	ZeroStretch( bb, x, y, track, h, 0, (float)gb.width, h );
+	ZeroStretch( bb, x + track, y, tab, h, (float)gb.width, (float)bb.width, h );
+	double rb = Ratio( (long long)st.baseExp, (long long)st.baseNext );
+	float fw = floorf( track * (float)rb );
+	ZeroStretch( gb, x + track - fw, y + 8, fw, (float)gb.height, gb.width * (float)( 1.0 - rb ), (float)gb.width, (float)gb.height );
+
+	float jtab = (float)( bj.width - gj.width ), jtrack = w - half - jtab;
+	ZeroStretch( bj, x + half, y, jtab, h, 0, jtab, h );
+	ZeroStretch( bj, x + half + jtab, y, jtrack, h, jtab, (float)bj.width, h );
+	double rj = Ratio( (long long)st.jobExp, (long long)st.jobNext );
+	ZeroStretch( gj, x + half + jtab, y + 8, floorf( jtrack * (float)rj ), (float)gj.height, 0, gj.width * (float)rj, (float)gj.height );
+
+	gfx::TextOutline( Font::ZeroSmall, L"Nv. base. " + std::to_wstring( st.baseLevel ), x + half - 70, y + 3, ZERO_WHITE, ZERO_EXP_OUTLINE );
+	gfx::TextOutline( Font::ZeroSmall, L"Nv. classe. " + std::to_wstring( st.jobLevel ), x + half + 10, y + 3, ZERO_JOB_TEXT, ZERO_EXP_OUTLINE );
+	gfx::End();
+}
+
+void ui::DrawGageBars( IDirect3DDevice9* dev, float x, float y, float w, float h, int hp, int maxHp, int sp, int maxSp, bool withSp, float down ){
+	if( !g_barsTried ){
+		g_barsTried = true;
+		const wchar_t* names[4] = { L"barra_hp_cheia", L"barra_hp_vazia", L"barra_sp_cheia", L"barra_sp_vazia" };
+		for( int i = 0; i < 4; i++ ) gfx::LoadImageFile( dev, config::BaseDir() + L"img\\" + names[i] + L".png", g_bars[i] );
+	}
+	if( g_bars[0].tex == nullptr || g_bars[2].tex == nullptr ) return;
+	if( !gfx::Begin( dev ) ) return;
+	// Centrada no retângulo da nativa (posição oficial; o cliente muda o tamanho dela com o zoom).
+	// Proporção das imagens vezes a espessura; a de SP encaixa embaixo da de HP (altura total = 1,8 barra)
+	float scale = config::Get().playerBarScale;
+	float bw = floorf( w * scale );
+	float bh = bw * g_bars[0].height / (float)g_bars[0].width * config::Get().playerBarThickness;
+	float total = withSp ? bh * 1.8f : bh;
+	float bx = floorf( x + ( w - bw ) * 0.5f ), by = floorf( y + ( h - total ) * 0.5f + bh * down );
+	auto bar = [&]( const gfx::Image& full, const gfx::Image& empty, int cur, int max, float top ){
+		float r = max > 0 ? (float)cur / (float)max : 0.0f;
+		r = r < 0.0f ? 0.0f : ( r > 1.0f ? 1.0f : r );
+		if( empty.tex != nullptr ) gfx::DrawImage( empty, bx, top, bw, bh );
+		if( r > 0.0f ) gfx::DrawImage( full, bx, top, bw * r, bh, 0xFFFFFFFF, 0.0f, 0.0f, r, 1.0f );
+	};
+	bar( g_bars[0], g_bars[1], hp, maxHp, by );
+	if( withSp ) bar( g_bars[2], g_bars[3], sp, maxSp, by + bh * 0.8f );
 	gfx::End();
 }
 

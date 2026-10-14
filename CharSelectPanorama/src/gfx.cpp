@@ -28,6 +28,7 @@ namespace {
 		const wchar_t* fallback;
 		int size;
 		int weight;
+		DWORD quality = ANTIALIASED_QUALITY;
 	};
 
 	const FontSpec FONT_SPECS[(int)gfx::Font::COUNT] = {
@@ -39,6 +40,8 @@ namespace {
 		{ L"Inter", L"Segoe UI", 11, FW_BOLD },     // SmallBold
 		{ L"Inter", L"Segoe UI", 15, FW_EXTRABOLD },// Button
 		{ L"Inter", L"Segoe UI", 17, FW_BOLD },     // Name
+		{ L"Tahoma", L"Arial", 11, FW_NORMAL, NONANTIALIASED_QUALITY }, // ZeroSmall
+		{ L"Tahoma", L"Arial", 13, FW_BOLD, NONANTIALIASED_QUALITY },   // ZeroName
 	};
 
 	struct TextEntry {
@@ -115,7 +118,7 @@ float4 main( float2 uv : TEXCOORD0, float4 col : COLOR0 ) : COLOR0 {
 			const wchar_t* face = FontAvailable( spec.face ) ? spec.face : spec.fallback;
 			int px = (int)( spec.size * g_uiScale + 0.5f );
 			g_fonts[i] = CreateFontW( -px, 0, 0, 0, spec.weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-				OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, face );
+				OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, spec.quality, DEFAULT_PITCH, face );
 		}
 	}
 
@@ -645,6 +648,30 @@ float gfx::Text( Font font, const std::wstring& text, float x, float y, D3DCOLOR
 	if( shadow ){
 		D3DCOLOR sc = D3DCOLOR_ARGB( ( ( color >> 24 ) & 0xFF ) * 3 / 4, 0, 0, 0 );
 		Quad( x + 1, y + 1, (float)e->texWidth, (float)e->texHeight, sc, sc, sc, sc );
+	}
+	Quad( x, y, (float)e->texWidth, (float)e->texHeight, color, color, color, color );
+	return w;
+}
+
+float gfx::TextOutline( Font font, const std::wstring& text, float x, float y, D3DCOLOR color, D3DCOLOR outline, int align ){
+	if( text.empty() || g_dev == nullptr ){
+		return 0.0f;
+	}
+	TextEntry* e = GetText( font, text );
+	if( e == nullptr || e->tex == nullptr ){
+		return 0.0f;
+	}
+	float w = (float)e->width;
+	if( align == Center ) x -= w * 0.5f;
+	else if( align == Right ) x -= w;
+	x = floorf( x ) - 2.0f;
+	y = floorf( y ) - 1.0f;
+	SetTextured( true );
+	g_dev->SetTexture( 0, e->tex );
+	for( int dy = -1; dy <= 1; dy++ ){
+		for( int dx = -1; dx <= 1; dx++ ){
+			if( dx != 0 || dy != 0 ) Quad( x + dx, y + dy, (float)e->texWidth, (float)e->texHeight, outline, outline, outline, outline );
+		}
 	}
 	Quad( x, y, (float)e->texWidth, (float)e->texHeight, color, color, color, color );
 	return w;

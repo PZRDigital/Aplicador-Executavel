@@ -191,6 +191,12 @@ void config::Load(){
 	s.selectedAction = ReadInt( L"interface", L"acao_selecionado", 32 );
 	s.actionFrameMs = ReadInt( L"interface", L"quadro_ms", 110 );
 	s.fadeMs = ReadInt( L"jogo", L"duracao_fade_ms", 80 );
+	s.playerBars = ReadInt( L"jogo", L"barra_jogador", 1 ) != 0;
+	s.playerBarScale = ReadFloat( L"jogo", L"barra_jogador_escala", 1.0f );
+	if( s.playerBarScale < 0.3f ) s.playerBarScale = 0.3f;
+	s.playerBarThickness = ReadFloat( L"jogo", L"barra_jogador_espessura", 1.0f );
+	if( s.playerBarThickness < 0.3f ) s.playerBarThickness = 0.3f;
+	s.playerBarDown = ReadFloat( L"jogo", L"barra_jogador_descer", 0.25f );
 	if( s.fadeMs < 0 ) s.fadeMs = 0;
 	s.serverChoiceMs = ReadInt( L"interface", L"tempo_escolha_servidor_s", 120 ) * 1000;
 	s.attackAction = ReadInt( L"interface", L"acao_golpe", 40 );
@@ -332,7 +338,7 @@ namespace {
 		unsigned flags;
 	};
 #pragma pack( pop )
-	volatile CodexFeatures g_features = { { 'C', 'O', 'D', 'E', 'X', '_', 'F', 'E', 'A', 'T', '0', '1' }, 0xFFFFFFFFu };
+	volatile CodexFeatures g_features = { { 'C', 'O', 'D', 'E', 'X', '_', 'F', 'E', 'A', 'T', '0', '1' }, 0x7Fu }; // padrão (publicar.sh): login a fade + barra de status do Zero; janelas do jogo nativas
 }
 
 bool config::Feature( unsigned f ){

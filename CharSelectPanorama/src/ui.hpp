@@ -90,6 +90,11 @@ namespace ui {
 	// Barra de status (no lugar da UIBasicInfoWnd; x, y = posição da janela nativa)
 	void DrawStatusHud( IDirect3DDevice9* dev, float x, float y, const game::Status& status );
 	bool StatusHudRedirect( const input::Point& real, input::Point& target, float nativeX, float nativeY );
+	// Barra de EXP do Ragnarok Zero, colada embaixo da tela
+	void DrawExpBar( IDirect3DDevice9* dev, float screenW, float screenH, const game::Status& status );
+	// Barra de HP (e SP) com as imagens no lugar de uma barra nativa (x, y, w, h = janela dela).
+	// down = quanto desce, em alturas de barra
+	void DrawGageBars( IDirect3DDevice9* dev, float x, float y, float w, float h, int hp, int maxHp, int sp, int maxSp, bool withSp, float down );
 
 	// Descrição do item (no lugar da UIItemCollectionWnd) e, à esquerda, o equipado no mesmo lugar.
 	// image(itemId, x, y, w, h): desenha a ilustração do item (false = sem imagem guardada)

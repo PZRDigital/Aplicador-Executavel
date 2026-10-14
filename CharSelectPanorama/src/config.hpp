@@ -51,6 +51,10 @@ namespace config {
 		float thumbScale = 0.9f;      // escala do personagem na miniatura da lista
 		int selectedAction = 32;      // ação do boneco selecionado (32 = postura de combate; -1 = parado)
 		int actionFrameMs = 110;      // duração de cada quadro dessa animação
+		bool playerBars = true;       // barra de HP/SP do personagem com as imagens (img\barra_*.png)
+		float playerBarScale = 1.0f;  // largura dela em relação à barra nativa (que acompanha o zoom)
+		float playerBarThickness = 1.0f; // espessura (1 = proporção das imagens)
+		float playerBarDown = 0.25f;  // quanto a do personagem desce, em alturas de barra
 		int fadeMs = 80;              // duração de cada fade da troca de mapa (original 255 ms; 0 = sem fade)
 		int serverChoiceMs = 120000;  // tempo do login-server para escolher o servidor (AUTH_TIMEOUT)
 		int attackAction = 40;        // golpe ao pré-selecionar (-1 = nunca)
