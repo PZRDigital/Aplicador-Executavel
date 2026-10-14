@@ -112,6 +112,8 @@ namespace game {
 	void RenamePet( const std::string& name ); // CZ_RENAME_PET (codepage do cliente)
 	// Janela de pet nativa (UIPetInfoWnd, Alt+J) e o botão de fechar dela
 	bool PetWindowRect( client::WndRect& out );
+	// Chat com os botões do Zero (16 px): os ícones do topo sobem de y 4 para 1 (não invadem o histórico)
+	void FixChatIcons();
 	bool PetCloseRect( client::WndRect& out );
 
 	// Janela de quests nativa (CUIRenewQuestUI) e o botão de fechar dela

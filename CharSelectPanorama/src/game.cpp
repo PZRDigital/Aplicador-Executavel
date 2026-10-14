@@ -863,6 +863,36 @@ namespace {
 	}
 }
 
+void game::FixChatIcons(){
+	constexpr uintptr_t VT_CHAT = 0x1017FD0;            // UINewChatWnd
+	constexpr uintptr_t PUSH_Y[] = { 0x8EE874, 0x8EE8C3 }; // OnDraw: ✕ (modo do chat) e cadeado em "push 4"
+	constexpr int TOP = 1;
+	static bool patched = false;
+	if( !patched ){
+		patched = true;
+		for( uintptr_t a : PUSH_Y ){
+			uint8_t* p = reinterpret_cast<uint8_t*>( a );
+			if( p[0] != 0x6A || p[1] != 4 ) continue;
+			DWORD old;
+			VirtualProtect( p + 1, 1, PAGE_EXECUTE_READWRITE, &old );
+			p[1] = (uint8_t)TOP;
+			VirtualProtect( p + 1, 1, old, &old );
+		}
+	}
+	uintptr_t w = g_sessionOk ? OpenWindow( VT_CHAT ) : 0, head = 0, node = 0;
+	if( w == 0 || !Peek( w + OFS_CHILDREN, head ) || head == 0 || !Peek( head, node ) ) return;
+	for( int i = 0; i < 64 && node != 0 && node != head; i++ ){
+		uintptr_t child = 0;
+		std::string image;
+		int y = 0;
+		if( Peek( node + 8, child ) && ReadStdString( child + OFS_BUTTON_IMAGE, image ) && Peek( child + client::OFS_WND_Y, y ) && y == 4
+			&& ( image.find( "stick" ) != std::string::npos || image.find( "battle_option" ) != std::string::npos || image.find( "wnd_mini" ) != std::string::npos ) ){
+			*reinterpret_cast<int*>( child + client::OFS_WND_Y ) = TOP;
+		}
+		if( !Peek( node, node ) ) break;
+	}
+}
+
 bool game::PetWindowRect( client::WndRect& r ){
 	uintptr_t w = g_sessionOk ? OpenWindow( VT_PETINFO ) : 0;
 	return w != 0 && WindowRect( w, r );

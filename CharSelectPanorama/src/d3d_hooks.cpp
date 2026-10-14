@@ -1356,9 +1356,9 @@ namespace {
 		else BoundsFromStream( dev, info, startVertex );
 		if( !info.hasBounds ) return false;
 		if( g_hasMenu ) game::MenuRect( g_menu.rect ); // o menu muda de tamanho ao abrir/fechar
-		// cursor do cliente sobre a janela de quests/Pokédex: o clique vai para um ponto da nativa,
-		// o cursor desenhado volta para onde o mouse realmente está (mesmo fora do retângulo da nativa)
-		if( ( g_questDrawn || g_petDrawn ) && upData != nullptr ){
+		// cursor do cliente sobre uma janela nossa (barra de status, menu, quests, Pokédex): o clique vai para um
+		// ponto da nativa, o cursor desenhado volta para onde o mouse realmente está
+		if( ( g_cursorHash != 0 || g_questDrawn || g_petDrawn ) && upData != nullptr ){
 			input::Point off = input::CursorOffset();
 			if( off.x != 0.0f || off.y != 0.0f ){
 				input::Point real = input::RealCursor();
@@ -1582,6 +1582,7 @@ namespace {
 
 	void GameFrameEnd( IDirect3DDevice9* dev ){
 		g_menuDrawn = g_questDrawn = g_petDrawn = false;
+		if( GameHudOn( config::FEAT_HUD ) ) game::FixChatIcons();
 		g_hasPet = GameHudOn( config::FEAT_PETWND ) && game::PetWindowRect( g_petRect );
 		g_hasQuest = GameHudOn( config::FEAT_QUESTWND ) && game::QuestWindowRect( g_questRect );
 		g_hasMenu = GameHudOn( config::FEAT_MENU ) && game::ReadMenu( g_menu );
