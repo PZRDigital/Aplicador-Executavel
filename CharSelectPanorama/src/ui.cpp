@@ -2581,10 +2581,11 @@ void ui::DrawExpBar( IDirect3DDevice9* dev, float screenW, float screenH, const 
 namespace {
 	// Ícones do menu do Zero, na ordem dele; rótulos da msgstringtable do cliente.
 	// Só entram os que existem no menu nativo (é ele que recebe o clique).
-	struct ZeroMenuEntry { const char* name; const wchar_t* label; };
+	struct ZeroMenuEntry { const char* name; const wchar_t* label; int legacy = 0; }; // legacy: botão antigo do Alt+V
 	const ZeroMenuEntry ZERO_MENU[] = {
 		{ "status", L"Atributos" }, { "equip", L"Equipamentos" }, { "item", L"Inventário" }, { "skill", L"Habilidades" },
-		{ "party", L"Grupo" }, { "guild", L"Clã" }, { "quest", L"Lista de missões" }, { "map", L"Mapa-Múndi" },
+		{ "party", L"Grupo", game::LEGACY_PARTY }, { "guild", L"Clã", game::LEGACY_GUILD }, { "quest", L"Lista de missões" },
+		{ "map", L"Mapa-Múndi", game::LEGACY_MAP },
 		{ "navigation", L"Navegação" }, { "option", L"Opção" }, { "bank", L"Banco" }, { "rec", L"Replay" },
 		{ "mail", L"RODEX" }, { "achievement", L"Conquistas" }, { "tip", L"Dicas" }, { "shop", L"Loja de dinheiro" },
 		{ "keyboard", L"Guia de teclas de atalho" }, { "attendance", L"Logue e Ganhe" },
@@ -2597,8 +2598,9 @@ namespace {
 	constexpr float MENU_CELL_W = 71, MENU_CELL_H = 63, MENU_GRID_X = 2, MENU_GRID_Y = 13;
 	constexpr int MENU_COLS = 5;
 
-	struct MenuHit { float x, y, w, h, tx, ty; };
+	struct MenuHit { float x, y, w, h, tx, ty; int legacy = 0; };
 	struct {
+		bool prevDown = false;
 		std::vector<MenuHit> hits;   // botão MENU e ícones -> centro do controle nativo
 		float x = 0, y = 0, w = 0, h = 0;
 		float bgx = 0, bgy = 0;      // fora dos controles: ponto vazio da janela nativa
@@ -2653,6 +2655,13 @@ void ui::DrawZeroMenu( IDirect3DDevice9* dev, const game::MenuState& m, float sc
 	if( !gfx::Begin( dev ) ) return;
 	float x, y;
 	ZeroMenuOrigin( m.open, screenW, screenH, x, y );
+	bool down = input::IsLeftDown();
+	// ícones sem botão no menu nativo (Mapa, Clã, Grupo): o clique é nosso (botão antigo do Alt+V)
+	if( g_menuUi.prevDown && !down && GetTickCount() - g_menuUi.tick < 250 ){
+		input::Point mp = input::RealCursor();
+		for( const MenuHit& h : g_menuUi.hits ) if( h.legacy && Inside( mp, h.x, h.y, h.w, h.h ) ) game::LegacyBasicButton( h.legacy );
+	}
+	g_menuUi.prevDown = down;
 	g_menuUi.hits.clear();
 	g_menuUi.x = x; g_menuUi.y = y;
 	g_menuUi.w = m.open ? MENU_OPEN_W : MENU_BTN_W;
@@ -2670,7 +2679,6 @@ void ui::DrawZeroMenu( IDirect3DDevice9* dev, const game::MenuState& m, float sc
 		}
 	}
 	g_menuUi.tick = GetTickCount();
-	bool down = input::IsLeftDown();
 
 	if( m.open ){
 		if( const gfx::Image* bg = ZeroMenuImage( dev, L"bg_menu" ) ) gfx::DrawImage( *bg, x, y, (float)bg->width, (float)bg->height );
@@ -2681,7 +2689,7 @@ void ui::DrawZeroMenu( IDirect3DDevice9* dev, const game::MenuState& m, float sc
 				std::string n = Lower( b.name );
 				if( n == e.name || ( n == "status_doram" && strcmp( e.name, "status" ) == 0 ) ){ nb = &b; break; }
 			}
-			if( nb == nullptr ) continue;
+			if( nb == nullptr && !e.legacy ) continue;
 			float cx = x + MENU_GRID_X + ( slot % MENU_COLS ) * MENU_CELL_W, cy = y + MENU_GRID_Y + ( slot / MENU_COLS ) * MENU_CELL_H;
 			slot++;
 			bool hover = Hovered( cx, cy, MENU_CELL_W, MENU_CELL_H );
@@ -2692,14 +2700,20 @@ void ui::DrawZeroMenu( IDirect3DDevice9* dev, const game::MenuState& m, float sc
 			if( img == nullptr ) img = ZeroMenuImage( dev, base + L"_normal" );
 			if( img ) gfx::DrawImage( *img, cx + floorf( ( MENU_CELL_W - img->width ) * 0.5f ), cy, (float)img->width, (float)img->height );
 			ZeroMenuLabel( e.label, cx + ( MENU_CELL_W - 1 ) * 0.5f, cy + 35 );
-			g_menuUi.hits.push_back( { cx, cy, MENU_CELL_W, MENU_CELL_H, nb->rect.x + nb->rect.w * 0.5f, nb->rect.y + nb->rect.h * 0.5f } );
+			if( nb ) g_menuUi.hits.push_back( { cx, cy, MENU_CELL_W, MENU_CELL_H, nb->rect.x + nb->rect.w * 0.5f, nb->rect.y + nb->rect.h * 0.5f } );
+			else g_menuUi.hits.push_back( { cx, cy, MENU_CELL_W, MENU_CELL_H, g_menuUi.bgx, g_menuUi.bgy, e.legacy } );
 		}
 	}
-	// botão MENU (canto inferior direito da janela)
+	// botão do menu (canto inferior direito da janela): logo do O Codex no lugar do Poring "MENU"
 	float bx = x + g_menuUi.w - MENU_BTN_W, by = y + g_menuUi.h - MENU_BTN_H;
 	bool hover = Hovered( bx, by, MENU_BTN_W, MENU_BTN_H );
-	const gfx::Image* btn = ZeroMenuImage( dev, hover ? ( down ? L"bt_menu_press" : L"bt_menu_over" ) : L"bt_menu_normal" );
-	if( btn ) gfx::DrawImage( *btn, bx, by, (float)btn->width, (float)btn->height );
+	if( const gfx::Image* logo = ZeroMenuImage( dev, L"logo" ) ){
+		float k = std::min( MENU_BTN_W / logo->width, MENU_BTN_H / logo->height ) * ( hover ? ( down ? 0.94f : 1.06f ) : 1.0f );
+		float lw = logo->width * k, lh = logo->height * k;
+		gfx::DrawImage( *logo, bx + ( MENU_BTN_W - lw ) * 0.5f, by + ( MENU_BTN_H - lh ) * 0.5f, lw, lh );
+	}else if( const gfx::Image* btn = ZeroMenuImage( dev, hover ? ( down ? L"bt_menu_press" : L"bt_menu_over" ) : L"bt_menu_normal" ) ){
+		gfx::DrawImage( *btn, bx, by, (float)btn->width, (float)btn->height );
+	}
 	// o botão nativo fica com a parte esquerda embaixo do nosso (o resto pode sair da tela)
 	g_menuUi.hits.push_back( { bx, by, MENU_BTN_W, MENU_BTN_H, m.toggle.x + std::min( 6.0f, m.toggle.w * 0.5f ), m.toggle.y + m.toggle.h * 0.5f } );
 	gfx::End();

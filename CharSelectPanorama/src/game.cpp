@@ -11,6 +11,7 @@
 
 #include "chardata.hpp"
 #include "config.hpp"
+#include "vfs.hpp"
 #include "log.hpp"
 
 namespace {
@@ -921,6 +922,13 @@ void game::RemoveButtons(){
 			node = next;
 		}
 	}
+}
+
+namespace { static void CallSendMsg( uintptr_t w, int msg, int v1 ); }
+
+void game::LegacyBasicButton( int id ){
+	uintptr_t w = g_sessionOk ? Window( OFS_MGR_BASICINFO, VT_BASICINFO ) : 0;
+	if( w ) CallSendMsg( w, 6, id ); // UIBasicInfoWnd: mensagem 6 = clique no botão (abre/fecha a janela dele)
 }
 
 bool game::PetWindowRect( client::WndRect& r ){

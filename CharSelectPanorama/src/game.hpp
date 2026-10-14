@@ -114,6 +114,9 @@ namespace game {
 	bool PetWindowRect( client::WndRect& out );
 	// Chat com os botões do Zero (16 px): os ícones do topo sobem de y 4 para 1 (não invadem o histórico)
 	void FixChatIcons();
+	// Botões antigos do Alt+V (ainda tratados pela UIBasicInfoWnd, mensagem 6): abrem/fecham a janela
+	constexpr int LEGACY_MAP = 0xDB, LEGACY_GUILD = 0x175, LEGACY_PARTY = 0xC7;
+	void LegacyBasicButton( int id );
 	// Botões removidos: "ITEM" da barra de atalhos (Shortcut\btn_open/close_itemslot) e os dois do Alt+Q
 	// (btn_e_ability e btn_e_change/off) saem da lista de filhos da janela (o objeto continua vivo:
 	// a janela guarda ponteiro para eles)

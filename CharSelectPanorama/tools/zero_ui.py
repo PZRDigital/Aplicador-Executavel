@@ -125,6 +125,9 @@ def main():
         if os.path.exists( f ):
             converter( f, os.path.join( out, 'menu', os.path.splitext( rel )[0] + '.png' ) )
     quests( src, out )
+    # botão do menu: logo do O Codex (sem a margem transparente) no lugar do Poring "MENU"
+    logo = Image.open( os.path.join( os.path.dirname( __file__ ), '..', 'dist', 'charselect', 'img', 'logo.png' ) ).convert( 'RGBA' )
+    logo.crop( logo.getchannel( 'A' ).point( lambda a: 255 if a > 8 else 0 ).getbbox() ).save( os.path.join( out, 'menu', 'logo.png' ) )
     n = 0
     for f in glob.glob( os.path.join( src, 'jobicon', 'big', 'icon_job_*.bmp' ) ):
         converter( f, os.path.join( out, 'job', os.path.splitext( os.path.basename( f ) )[0] + '.png' ) )
