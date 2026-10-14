@@ -893,7 +893,7 @@ void game::FixChatIcons(){
 	}
 }
 
-void game::HideButtons(){
+void game::RemoveButtons(){
 	struct Rule { uintptr_t vt; const char* names[3]; };
 	static const Rule rules[] = {
 		{ 0x10174D4, { "itemslot", nullptr, nullptr } },                          // UIShortCutWnd
@@ -904,17 +904,64 @@ void game::HideButtons(){
 		uintptr_t w = OpenWindow( r.vt ), head = 0, node = 0;
 		if( w == 0 || !Peek( w + OFS_CHILDREN, head ) || head == 0 || !Peek( head, node ) ) continue;
 		for( int i = 0; i < 64 && node != 0 && node != head; i++ ){
-			uintptr_t child = 0;
+			uintptr_t next = 0, prev = 0, child = 0;
+			if( !Peek( node, next ) || !Peek( node + 4, prev ) ) break;
 			std::string image;
-			int x = 0;
-			if( Peek( node + 8, child ) && ReadStdString( child + OFS_BUTTON_IMAGE, image ) && Peek( child + client::OFS_WND_X, x ) && x > -5000 ){
-				for( const char* n : r.names ){
-					if( n && image.find( n ) != std::string::npos ){ *reinterpret_cast<int*>( child + client::OFS_WND_X ) = -10000; break; }
-				}
+			bool match = false;
+			if( Peek( node + 8, child ) && ReadStdString( child + OFS_BUTTON_IMAGE, image ) ){
+				for( const char* n : r.names ) match = match || ( n && image.find( n ) != std::string::npos );
 			}
-			if( !Peek( node, node ) ) break;
+			if( match ){
+				// std::list (MSVC): nó = próximo, anterior, valor; tamanho logo depois da cabeça
+				*reinterpret_cast<uintptr_t*>( prev ) = next;
+				*reinterpret_cast<uintptr_t*>( next + 4 ) = prev;
+				--*reinterpret_cast<uint32_t*>( w + OFS_CHILDREN + 4 );
+				*reinterpret_cast<int*>( child + client::OFS_WND_X ) = -10000; // se algo ainda testar o retângulo
+			}
+			node = next;
 		}
 	}
+}
+
+void game::UnifyStatusEquip(){
+	constexpr uintptr_t VT_EQUIP = 0x101232C, VT_STATUS = 0x1012AC4;
+	constexpr int WND_EQUIP = 0x24, WND_STATUS = 0x0B;
+	constexpr uintptr_t FN_MAKE_WINDOW = 0xA21760, FN_CLOSE_WINDOW = 0xA16BB0; // fechar devolve true se estava aberta
+	static bool prevEquip = false, prevStatus = false;
+	static int lastEx = 0, lastEy = 0;
+	if( !g_sessionOk ) return;
+	auto call = []( uintptr_t fn, int id ){
+		__try{ reinterpret_cast<uintptr_t( __thiscall* )( void*, int )>( fn )( reinterpret_cast<void*>( G_WINDOW_MGR ), id ); }
+		__except( EXCEPTION_EXECUTE_HANDLER ){}
+	};
+	// o fechamento termina depois: a janela mandada fechar ainda aparece na lista por alguns quadros
+	static DWORD closingEquip = 0, closingStatus = 0;
+	DWORD now = GetTickCount();
+	uintptr_t eq = OpenWindow( VT_EQUIP ), st = OpenWindow( VT_STATUS );
+	if( now - closingEquip < 400 ) eq = 0;
+	if( now - closingStatus < 400 ) st = 0;
+	bool equip = eq != 0, status = st != 0;
+	if( equip && !prevEquip && !status ){ call( FN_MAKE_WINDOW, WND_STATUS ); st = OpenWindow( VT_STATUS ); status = st != 0; }
+	else if( status && !prevStatus && !equip ){ call( FN_MAKE_WINDOW, WND_EQUIP ); eq = OpenWindow( VT_EQUIP ); equip = eq != 0; }
+	else if( !equip && prevEquip && status ){ call( FN_CLOSE_WINDOW, WND_STATUS ); closingStatus = now; status = false; st = 0; }
+	else if( !status && prevStatus && equip ){ call( FN_CLOSE_WINDOW, WND_EQUIP ); closingEquip = now; equip = false; eq = 0; }
+	prevEquip = equip;
+	prevStatus = status;
+	client::WndRect er, sr;
+	if( !equip || !status || !WindowRect( eq, er ) || !WindowRect( st, sr ) ) return;
+	if( er.x != lastEx || er.y != lastEy || ( sr.x == er.x && sr.y == er.y + er.h ) ){
+		// equipamentos moveu (ou já estão juntas): atributos vai para baixo dela
+		*reinterpret_cast<int*>( st + client::OFS_WND_X ) = er.x;
+		*reinterpret_cast<int*>( st + client::OFS_WND_Y ) = er.y + er.h;
+	}else{
+		// arrastaram os atributos: equipamentos acompanha por cima
+		er.x = sr.x;
+		er.y = sr.y - er.h;
+		*reinterpret_cast<int*>( eq + client::OFS_WND_X ) = er.x;
+		*reinterpret_cast<int*>( eq + client::OFS_WND_Y ) = er.y;
+	}
+	lastEx = er.x;
+	lastEy = er.y;
 }
 
 bool game::PetWindowRect( client::WndRect& r ){

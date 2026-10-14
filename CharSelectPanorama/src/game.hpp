@@ -114,9 +114,13 @@ namespace game {
 	bool PetWindowRect( client::WndRect& out );
 	// Chat com os botões do Zero (16 px): os ícones do topo sobem de y 4 para 1 (não invadem o histórico)
 	void FixChatIcons();
-	// Botões desativados: "ITEM" da barra de atalhos (Shortcut\btn_open/close_itemslot) e os dois do Alt+Q
-	// (btn_e_ability e btn_e_change/off) saem da tela (sem desenho nem clique)
-	void HideButtons();
+	// Botões removidos: "ITEM" da barra de atalhos (Shortcut\btn_open/close_itemslot) e os dois do Alt+Q
+	// (btn_e_ability e btn_e_change/off) saem da lista de filhos da janela (o objeto continua vivo:
+	// a janela guarda ponteiro para eles)
+	void RemoveButtons();
+	// Alt+A junto do Alt+Q (como nos clientes antigos): abrir/fechar uma abre/fecha a outra, e a de
+	// atributos fica encaixada embaixo da de equipamentos (arrastar qualquer uma move as duas)
+	void UnifyStatusEquip();
 	bool PetCloseRect( client::WndRect& out );
 
 	// Janela de quests nativa (CUIRenewQuestUI) e o botão de fechar dela

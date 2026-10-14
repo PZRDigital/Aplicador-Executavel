@@ -1582,7 +1582,7 @@ namespace {
 
 	void GameFrameEnd( IDirect3DDevice9* dev ){
 		g_menuDrawn = g_questDrawn = g_petDrawn = false;
-		if( GameHudOn( config::FEAT_HUD ) ){ game::FixChatIcons(); game::HideButtons(); }
+		if( GameHudOn( config::FEAT_HUD ) ){ game::FixChatIcons(); game::RemoveButtons(); game::UnifyStatusEquip(); }
 		g_hasPet = GameHudOn( config::FEAT_PETWND ) && game::PetWindowRect( g_petRect );
 		g_hasQuest = GameHudOn( config::FEAT_QUESTWND ) && game::QuestWindowRect( g_questRect );
 		g_hasMenu = GameHudOn( config::FEAT_MENU ) && game::ReadMenu( g_menu );
