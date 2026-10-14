@@ -99,6 +99,7 @@ namespace {
 		bool tried = false;
 	} g_zero;
 	std::map<int, gfx::Image> g_zeroJobs; // img\zero\job\icon_job_<classe>.png
+	std::map<std::wstring, gfx::Image> g_zeroMenu; // img\zero\menu\<nome>.png (carregadas sob demanda)
 
 	// Ícones de classe: os do Ragnarok Zero (img\zero\job) ou, sem eles, charselect\icones\<classe>.png (tools\icones_codex.py)
 	std::map<int, gfx::Image> g_icons;
@@ -1657,6 +1658,8 @@ void ui::OnDeviceLost(){
 	g_zero.tried = false;
 	for( auto& kv : g_zeroJobs ) gfx::Release( kv.second );
 	g_zeroJobs.clear();
+	for( auto& kv : g_zeroMenu ) gfx::Release( kv.second );
+	g_zeroMenu.clear();
 	gfx::OnDeviceLost();
 }
 
@@ -1667,6 +1670,7 @@ bool ui::Redirect( const input::Point& real, input::Point& target ){
 	{
 		client::WndRect br;
 		if( client::InGame() && game::BasicInfoRect( br ) && StatusHudRedirect( real, target, (float)br.x, (float)br.y ) ) return true;
+		if( client::InGame() && ZeroMenuRedirect( real, target ) ) return true;
 	}
 	if( !config::CustomActive() ){
 		return false;
@@ -1982,6 +1986,146 @@ void ui::DrawExpBar( IDirect3DDevice9* dev, float screenW, float screenH, const 
 	gfx::TextOutline( Font::ZeroSmall, L"Nv. base. " + std::to_wstring( st.baseLevel ), x + half - 70, y + 3, ZERO_WHITE, ZERO_EXP_OUTLINE );
 	gfx::TextOutline( Font::ZeroSmall, L"Nv. classe. " + std::to_wstring( st.jobLevel ), x + half + 10, y + 3, ZERO_JOB_TEXT, ZERO_EXP_OUTLINE );
 	gfx::End();
+}
+
+namespace {
+	// Ícones do menu do Zero, na ordem dele; rótulos da msgstringtable do cliente.
+	// Só entram os que existem no menu nativo (é ele que recebe o clique).
+	struct ZeroMenuEntry { const char* name; const wchar_t* label; };
+	const ZeroMenuEntry ZERO_MENU[] = {
+		{ "status", L"Atributos" }, { "equip", L"Equipamentos" }, { "item", L"Inventário" }, { "skill", L"Habilidades" },
+		{ "party", L"Grupo" }, { "guild", L"Clã" }, { "quest", L"Lista de missões" }, { "map", L"Mapa-Múndi" },
+		{ "navigation", L"Navegação" }, { "option", L"Opção" }, { "bank", L"Banco" }, { "rec", L"Replay" },
+		{ "mail", L"RODEX" }, { "achievement", L"Conquistas" }, { "tip", L"Dicas" }, { "shop", L"Loja de dinheiro" },
+		{ "keyboard", L"Guia de teclas de atalho" }, { "attendance", L"Logue e Ganhe" },
+		{ "adventureragency", L"Adventurer's Brokerage" }, { "repute", L"Reputação" }, { "probability", L"Ver chances" },
+		{ "booking", L"Recrutar" },
+	};
+	// Tema novo do Zero: fechado = só o botão MENU (70x62); aberto = 372x343 com o painel, grade de 5 colunas
+	// (células 71x63 a partir de 2,13; imagem 45x41 centrada, rótulo em y+35) e o botão no canto inferior direito.
+	constexpr float MENU_BTN_W = 70, MENU_BTN_H = 62, MENU_OPEN_W = 372, MENU_OPEN_H = 343, MENU_MARGIN = 11;
+	constexpr float MENU_CELL_W = 71, MENU_CELL_H = 63, MENU_GRID_X = 2, MENU_GRID_Y = 13;
+	constexpr int MENU_COLS = 5;
+
+	struct MenuHit { float x, y, w, h, tx, ty; };
+	struct {
+		std::vector<MenuHit> hits;   // botão MENU e ícones -> centro do controle nativo
+		float x = 0, y = 0, w = 0, h = 0;
+		float bgx = 0, bgy = 0;      // fora dos controles: ponto vazio da janela nativa
+		DWORD tick = 0;
+	} g_menuUi;
+
+	const gfx::Image* ZeroMenuImage( IDirect3DDevice9* dev, const std::wstring& name ){
+		auto it = g_zeroMenu.find( name );
+		if( it == g_zeroMenu.end() ){
+			gfx::Image& img = g_zeroMenu[name];
+			std::wstring path = config::BaseDir() + L"img\\zero\\menu\\" + name + L".png";
+			if( vfs::Exists( path ) ) gfx::LoadImageFile( dev, path, img );
+			return img.tex ? &img : nullptr;
+		}
+		return it->second.tex ? &it->second : nullptr;
+	}
+
+	std::string Lower( std::string s ){
+		for( char& c : s ) c = (char)tolower( (unsigned char)c );
+		return s;
+	}
+
+	// Rótulo centrado embaixo do ícone; o que não cabe na célula vai em duas linhas
+	void ZeroMenuLabel( const std::wstring& text, float cx, float y ){
+		const D3DCOLOR outline = 0xFF222222;
+		if( gfx::TextWidth( Font::ZeroSmall, text ) <= MENU_CELL_W - 1 ){
+			gfx::TextOutline( Font::ZeroSmall, text, cx, y, ZERO_WHITE, outline, gfx::Center );
+			return;
+		}
+		size_t best = std::wstring::npos;
+		for( size_t i = text.find( L' ' ); i != std::wstring::npos; i = text.find( L' ', i + 1 ) ){
+			if( best == std::wstring::npos || abs( (int)i - (int)text.size() / 2 ) < abs( (int)best - (int)text.size() / 2 ) ) best = i;
+		}
+		if( best == std::wstring::npos ){
+			gfx::TextOutline( Font::ZeroSmall, text, cx, y, ZERO_WHITE, outline, gfx::Center );
+			return;
+		}
+		float lh = gfx::LineHeight( Font::ZeroSmall );
+		gfx::TextOutline( Font::ZeroSmall, text.substr( 0, best ), cx, y, ZERO_WHITE, outline, gfx::Center );
+		gfx::TextOutline( Font::ZeroSmall, text.substr( best + 1 ), cx, y + lh, ZERO_WHITE, outline, gfx::Center );
+	}
+}
+
+void ui::ZeroMenuOrigin( bool open, float screenW, float screenH, float& x, float& y ){
+	x = screenW - ( open ? MENU_OPEN_W : MENU_BTN_W ) - MENU_MARGIN;
+	y = screenH - ( open ? MENU_OPEN_H : MENU_BTN_H ) - MENU_MARGIN;
+}
+
+void ui::DrawZeroMenu( IDirect3DDevice9* dev, const game::MenuState& m, float screenW, float screenH ){
+	g_s = 1.0f;
+	gfx::SetUiScale( 1.0f );
+	if( !gfx::Begin( dev ) ) return;
+	float x, y;
+	ZeroMenuOrigin( m.open, screenW, screenH, x, y );
+	g_menuUi.hits.clear();
+	g_menuUi.x = x; g_menuUi.y = y;
+	g_menuUi.w = m.open ? MENU_OPEN_W : MENU_BTN_W;
+	g_menuUi.h = m.open ? MENU_OPEN_H : MENU_BTN_H;
+	// ponto vazio da janela nativa (nem o botão de abrir/fechar nem um ícone)
+	g_menuUi.bgx = m.rect.x + 2.0f;
+	g_menuUi.bgy = m.rect.y + 2.0f;
+	auto inRect = []( float px, float py, const client::WndRect& r ){ return px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h; };
+	bool found = false;
+	for( int py = m.rect.y + 2; py < m.rect.y + m.rect.h - 1 && !found; py += 4 ){
+		for( int px = m.rect.x + 2; px < m.rect.x + m.rect.w - 1 && !found; px += 4 ){
+			bool busy = inRect( (float)px, (float)py, m.toggle );
+			for( const game::MenuButton& b : m.icons ) busy = busy || inRect( (float)px, (float)py, b.rect );
+			if( !busy ){ g_menuUi.bgx = (float)px; g_menuUi.bgy = (float)py; found = true; }
+		}
+	}
+	g_menuUi.tick = GetTickCount();
+	bool down = input::IsLeftDown();
+
+	if( m.open ){
+		if( const gfx::Image* bg = ZeroMenuImage( dev, L"bg_menu" ) ) gfx::DrawImage( *bg, x, y, (float)bg->width, (float)bg->height );
+		int slot = 0;
+		for( const ZeroMenuEntry& e : ZERO_MENU ){
+			const game::MenuButton* nb = nullptr;
+			for( const game::MenuButton& b : m.icons ){
+				std::string n = Lower( b.name );
+				if( n == e.name || ( n == "status_doram" && strcmp( e.name, "status" ) == 0 ) ){ nb = &b; break; }
+			}
+			if( nb == nullptr ) continue;
+			float cx = x + MENU_GRID_X + ( slot % MENU_COLS ) * MENU_CELL_W, cy = y + MENU_GRID_Y + ( slot / MENU_COLS ) * MENU_CELL_H;
+			slot++;
+			bool hover = Hovered( cx, cy, MENU_CELL_W, MENU_CELL_H );
+			std::wstring base = L"bt_" + std::wstring( e.name, e.name + strlen( e.name ) );
+			const gfx::Image* img = nullptr;
+			if( hover && down ) img = ZeroMenuImage( dev, base + L"_press" );
+			if( img == nullptr && hover ) img = ZeroMenuImage( dev, base + L"_mouseon" );
+			if( img == nullptr ) img = ZeroMenuImage( dev, base + L"_normal" );
+			if( img ) gfx::DrawImage( *img, cx + floorf( ( MENU_CELL_W - img->width ) * 0.5f ), cy, (float)img->width, (float)img->height );
+			ZeroMenuLabel( e.label, cx + ( MENU_CELL_W - 1 ) * 0.5f, cy + 35 );
+			g_menuUi.hits.push_back( { cx, cy, MENU_CELL_W, MENU_CELL_H, nb->rect.x + nb->rect.w * 0.5f, nb->rect.y + nb->rect.h * 0.5f } );
+		}
+	}
+	// botão MENU (canto inferior direito da janela)
+	float bx = x + g_menuUi.w - MENU_BTN_W, by = y + g_menuUi.h - MENU_BTN_H;
+	bool hover = Hovered( bx, by, MENU_BTN_W, MENU_BTN_H );
+	const gfx::Image* btn = ZeroMenuImage( dev, hover ? ( down ? L"bt_menu_press" : L"bt_menu_over" ) : L"bt_menu_normal" );
+	if( btn ) gfx::DrawImage( *btn, bx, by, (float)btn->width, (float)btn->height );
+	// o botão nativo fica com a parte esquerda embaixo do nosso (o resto pode sair da tela)
+	g_menuUi.hits.push_back( { bx, by, MENU_BTN_W, MENU_BTN_H, m.toggle.x + std::min( 6.0f, m.toggle.w * 0.5f ), m.toggle.y + m.toggle.h * 0.5f } );
+	gfx::End();
+}
+
+bool ui::ZeroMenuRedirect( const input::Point& real, input::Point& target ){
+	if( GetTickCount() - g_menuUi.tick > 250 || !Inside( real, g_menuUi.x, g_menuUi.y, g_menuUi.w, g_menuUi.h ) ) return false;
+	for( const MenuHit& h : g_menuUi.hits ){
+		if( Inside( real, h.x, h.y, h.w, h.h ) ){
+			target = { h.tx, h.ty };
+			return true;
+		}
+	}
+	// painel fora dos ícones: dentro da janela nativa, longe dos controles (o clique não vai para o mapa)
+	target = { g_menuUi.bgx, g_menuUi.bgy };
+	return true;
 }
 
 void ui::DrawGageBars( IDirect3DDevice9* dev, float x, float y, float w, float h, int hp, int maxHp, int sp, int maxSp, bool withSp, float down ){

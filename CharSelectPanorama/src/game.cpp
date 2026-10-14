@@ -575,6 +575,101 @@ bool game::EquipWindowRect( client::WndRect& r ){
 	return g_sessionOk && WindowRect( Window( 0x1E0, 0x101232C ), r );
 }
 
+// ---------------------------------------------------------------- menu de ícones
+namespace {
+	constexpr uintptr_t FN_GET_WINDOW = 0xA30000; // UIWindowMgr::GetWindow(id)
+	constexpr int WND_MENUICON = 0x133;
+	constexpr uintptr_t VT_MENUICON = 0x10082A0;
+	constexpr uintptr_t G_MENU_OPEN = 0x15DAFDC;   // painel aberto (lido pelo OnDraw do menu)
+	constexpr uintptr_t OFS_MENU_NEW = 0xA8, OFS_MENU_BTN_OPEN = 0xAC, OFS_MENU_BTN_NEW = 0xB0, OFS_MENU_BTN_CLOSE = 0xB4;
+	constexpr uintptr_t OFS_MENU_ICONS = 0x94;     // std::map<int, UIMenuIcon*>
+	constexpr uintptr_t OFS_BUTTON_IMAGE = 0xBC;   // std::string da imagem normal do botão
+	uintptr_t g_menuWnd = 0;                       // última janela lida (para o retângulo no meio do quadro)
+
+	uintptr_t MenuWindow(){
+		static int sigOk = -1;
+		if( sigOk < 0 ){
+			const uint8_t sig[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C };
+			sigOk = memcmp( reinterpret_cast<void*>( FN_GET_WINDOW ), sig, sizeof( sig ) ) == 0;
+		}
+		if( !sigOk ) return 0;
+		uintptr_t w = 0, vt = 0;
+		__try{
+			w = reinterpret_cast<uintptr_t( __thiscall* )( void*, int )>( FN_GET_WINDOW )( reinterpret_cast<void*>( G_WINDOW_MGR ), WND_MENUICON );
+		}__except( EXCEPTION_EXECUTE_HANDLER ){
+			return 0;
+		}
+		return w != 0 && Peek( w, vt ) && vt == VT_MENUICON ? w : 0;
+	}
+
+	bool ReadStdString( uintptr_t a, std::string& out ){
+		uint32_t size = 0, cap = 0;
+		if( !Peek( a + 0x10, size ) || !Peek( a + 0x14, cap ) || size > 260 ) return false;
+		uintptr_t data = a;
+		if( cap >= 16 && !Peek( a, data ) ) return false;
+		out.assign( size, '\0' );
+		for( uint32_t i = 0; i < size; i++ ) if( !Peek( data + i, out[i] ) ) return false;
+		return true;
+	}
+
+	bool ChildRect( uintptr_t child, const client::WndRect& parent, client::WndRect& r ){
+		if( child == 0 || !WindowRect( child, r ) ) return false;
+		r.x += parent.x;
+		r.y += parent.y;
+		return true;
+	}
+
+	// Árvore do std::map (MSVC): nó = esquerda, pai, direita, cor, é-nulo(+0xD), chave(+0x10), valor(+0x14)
+	void MenuIcons( uintptr_t node, const client::WndRect& parent, std::vector<game::MenuButton>& out, int depth ){
+		uint8_t nil = 1;
+		if( node == 0 || depth > 32 || out.size() > 64 || !Peek( node + 0xD, nil ) || nil ) return;
+		uintptr_t left = 0, right = 0, button = 0;
+		Peek( node, left );
+		Peek( node + 8, right );
+		Peek( node + 0x14, button );
+		MenuIcons( left, parent, out, depth + 1 );
+		game::MenuButton b;
+		std::string image;
+		if( ChildRect( button, parent, b.rect ) && ReadStdString( button + OFS_BUTTON_IMAGE, image ) ){
+			size_t s = image.rfind( "bt_" ), e = image.rfind( ".bmp" );
+			if( s != std::string::npos && e != std::string::npos && e > s + 3 ){
+				b.name = image.substr( s + 3, e - s - 3 );
+				out.push_back( b );
+			}
+		}
+		MenuIcons( right, parent, out, depth + 1 );
+	}
+}
+
+bool game::ReadMenu( MenuState& m ){
+	uintptr_t w = g_sessionOk ? MenuWindow() : 0;
+	g_menuWnd = w;
+	if( w == 0 || !WindowRect( w, m.rect ) ) return false;
+	uint8_t open = 0;
+	uint32_t isNew = 0;
+	Peek( G_MENU_OPEN, open );
+	Peek( w + OFS_MENU_NEW, isNew );
+	m.open = open != 0;
+	uintptr_t btn = 0;
+	Peek( w + ( m.open ? OFS_MENU_BTN_CLOSE : isNew ? OFS_MENU_BTN_NEW : OFS_MENU_BTN_OPEN ), btn );
+	if( !ChildRect( btn, m.rect, m.toggle ) ) return false;
+	m.icons.clear();
+	uintptr_t head = 0, root = 0;
+	if( m.open && Peek( w + OFS_MENU_ICONS, head ) && head != 0 && Peek( head + 4, root ) ) MenuIcons( root, m.rect, m.icons, 0 );
+	return true;
+}
+
+bool game::MenuRect( client::WndRect& r ){
+	return g_menuWnd != 0 && WindowRect( g_menuWnd, r );
+}
+
+void game::PlaceMenu( int x, int y ){
+	uintptr_t w = g_sessionOk ? MenuWindow() : 0;
+	if( w == 0 ) return;
+	*reinterpret_cast<int*>( w + client::OFS_WND_X ) = x;
+	*reinterpret_cast<int*>( w + client::OFS_WND_Y ) = y;
+}
+
 // ---------------------------------------------------------------- inventário
 std::vector<game::Item> game::Inventory(){
 	std::lock_guard<std::mutex> g( g_lock );

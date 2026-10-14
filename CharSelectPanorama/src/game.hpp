@@ -72,6 +72,21 @@ namespace game {
 	bool ShowEquipFlag();
 	bool EquipWindowRect( client::WndRect& out );
 
+	// Menu de ícones (UIMenuIconWnd, janela 0x133): estado aberto, botão de abrir/fechar e os ícones
+	// (nome = o da imagem, "equip" de menu_icon\bt_equip.bmp), em coordenadas de tela.
+	struct MenuButton {
+		std::string name;
+		client::WndRect rect;
+	};
+	struct MenuState {
+		bool open = false;
+		client::WndRect rect, toggle;
+		std::vector<MenuButton> icons;
+	};
+	bool ReadMenu( MenuState& out );
+	bool MenuRect( client::WndRect& out ); // retângulo atual da janela lida por ReadMenu
+	void PlaceMenu( int x, int y ); // move a janela nativa (os filhos acompanham)
+
 	// Ações: pacotes pela rotina de envio do próprio cliente (cifra o id como ele faz)
 	bool SendPacket( const void* data, int len );
 	void StatusUp( int stat );                 // 0 = FOR ... 5 = SOR

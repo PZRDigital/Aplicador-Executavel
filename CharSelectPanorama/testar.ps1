@@ -8,6 +8,7 @@
 #   tecla <vk>          pressiona uma tecla (código virtual, ex.: 27 = Esc)
 #   digitar <texto>     envia texto (sintaxe SendKeys: {ENTER}, etc.)
 #   rajada <x,y> <n>    clica em x,y e captura n quadros seguidos (reduzidos) em testes\rajada\
+#   atalho <vk,vk> [n]  aperta a combinação (ex.: 18,86 = Alt+V) e captura n quadros em testes\rajada\
 #   fechar              encerra o Codex
 param(
 	[Parameter(Mandatory = $true)][string]$Acao,
@@ -102,6 +103,34 @@ switch ($Acao) {
 		Start-Sleep -Milliseconds 200
 		[System.Windows.Forms.SendKeys]::SendWait($A)
 		Write-Host "OK: digitado $A"
+	}
+	'atalho' {
+		# combinação de teclas (códigos separados por vírgula, ex.: 18,86 = Alt+V) + n capturas reduzidas em testes\rajada\
+		$h = Janela
+		[W]::SetForegroundWindow($h) | Out-Null
+		$r = New-Object W+RECT; [W]::GetClientRect($h, [ref]$r) | Out-Null
+		$o = New-Object W+POINT; [W]::ClientToScreen($h, [ref]$o) | Out-Null
+		$w = $r.R - $r.L; $hh = $r.B - $r.T
+		$dir = Join-Path $saida 'rajada'
+		New-Item -ItemType Directory -Force -Path $dir | Out-Null
+		Get-ChildItem $dir -Filter *.png | Remove-Item
+		$teclas = $A.Split(',') | ForEach-Object { [byte][int]$_ }
+		$n = if ($B) { [int]$B } else { 0 }
+		$bmp = New-Object System.Drawing.Bitmap $w, $hh
+		$g = [System.Drawing.Graphics]::FromImage($bmp)
+		$small = New-Object System.Drawing.Bitmap ([int]($w / 2)), ([int]($hh / 2))
+		$gs = [System.Drawing.Graphics]::FromImage($small)
+		foreach ($k in $teclas) { [W]::keybd_event($k, 0, 0, 0); Start-Sleep -Milliseconds 30 }
+		Start-Sleep -Milliseconds 40
+		[array]::Reverse($teclas)
+		foreach ($k in $teclas) { [W]::keybd_event($k, 0, 2, 0) }
+		for ($i = 0; $i -lt $n; $i++) {
+			$g.CopyFromScreen($o.X, $o.Y, 0, 0, $bmp.Size)
+			$gs.DrawImage($bmp, 0, 0, $small.Width, $small.Height)
+			$small.Save((Join-Path $dir ('{0:D3}.png' -f $i)))
+		}
+		$g.Dispose(); $gs.Dispose(); $bmp.Dispose(); $small.Dispose()
+		Write-Host "OK: teclas $A, $n quadros em $dir"
 	}
 	'rajada' {
 		# clique + sequência de capturas com o tempo de cada uma (para ver a transição da câmera)

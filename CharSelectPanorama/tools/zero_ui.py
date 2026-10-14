@@ -16,6 +16,12 @@ ARQUIVOS = [
     'expbar/bg_exp_base.tga', 'expbar/bg_exp_job.tga', 'expbar/gze_exp_base.bmp', 'expbar/gze_exp_job.bmp',
 ]
 
+# Menu de ícones (UIMenuIconWnd do tema novo): fundo, botão MENU e cada ícone em 3 estados
+MENU = [ 'bg_menu.tga', 'bt_menu_normal.bmp', 'bt_menu_over.bmp', 'bt_menu_press.bmp' ]
+ICONES = [ 'status', 'equip', 'item', 'skill', 'party', 'guild', 'quest', 'map', 'navigation', 'option', 'bank', 'rec',
+    'mail', 'achievement', 'tip', 'shop', 'keyboard', 'attendance', 'adventureragency', 'repute', 'probability', 'booking' ]
+ESTADOS = [ 'normal', 'mouseon', 'press' ]
+
 
 def converter( origem, destino ):
     im = Image.open( origem )
@@ -38,6 +44,10 @@ def main():
     out = sys.argv[2] if len( sys.argv ) > 2 else os.path.join( os.path.dirname( __file__ ), '..', 'dist', 'charselect', 'img', 'zero' )
     for rel in ARQUIVOS:
         converter( os.path.join( src, rel ), os.path.join( out, os.path.splitext( os.path.basename( rel ) )[0] + '.png' ) )
+    for rel in MENU + [ 'bt_%s_%s.bmp' % ( i, e ) for i in ICONES for e in ESTADOS ]:
+        f = os.path.join( src, 'menuicon', rel )
+        if os.path.exists( f ):
+            converter( f, os.path.join( out, 'menu', os.path.splitext( rel )[0] + '.png' ) )
     n = 0
     for f in glob.glob( os.path.join( src, 'jobicon', 'big', 'icon_job_*.bmp' ) ):
         converter( f, os.path.join( out, 'job', os.path.splitext( os.path.basename( f ) )[0] + '.png' ) )

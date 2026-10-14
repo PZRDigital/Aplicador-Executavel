@@ -1045,6 +1045,8 @@ namespace {
 	int g_equipCharDraws = 0, g_equipCharLog = 0;
 	ULONG g_windowHash = 0;        // pilha de chamadas que desenha as janelas (aprendida na barra de status)
 	bool g_hasBasic = false, g_basicDrawn = false, g_itemDrawn = false;
+	game::MenuState g_menu;            // menu de ícones nativo (escondido embaixo do menu do Zero)
+	bool g_hasMenu = false, g_menuDrawn = false;
 	bool g_skinFills = false; // dentro do jogo com a skin escura
 	client::WndRect g_basicRect;
 	client::WndRect g_gageRect;     // barra de HP/SP embaixo do personagem (UIPlayerGage)
@@ -1052,6 +1054,12 @@ namespace {
 	client::PartyGage g_party[32];     // barras do grupo (UIPcGage) deste quadro
 	bool g_partyDrawn[32] = {};
 	int g_partyCount = 0;
+
+	void DrawZeroMenuUi( IDirect3DDevice9* dev ){
+		D3DVIEWPORT9 vp;
+		dev->GetViewport( &vp );
+		ui::DrawZeroMenu( dev, g_menu, (float)vp.Width, (float)vp.Height );
+	}
 
 	void DrawPlayerGage( IDirect3DDevice9* dev ){
 		game::Status st;
@@ -1326,10 +1334,14 @@ namespace {
 
 	// true = o desenho do cliente é parte de uma janela substituída (não desenha)
 	bool GameWindowDraw( IDirect3DDevice9* dev, DrawInfo& info, const void* upData, UINT upStride, UINT startVertex, bool indexed ){
-		if( ( !g_hasBasic && !g_hasGage && g_partyCount == 0 && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
+		// Alt+V recria/redimensiona a barra de status no meio do quadro: janela e retângulo de agora
+		// (senão a nativa aparece por um quadro)
+		g_hasBasic = GameHudOn( config::FEAT_HUD ) && game::BasicInfoRect( g_basicRect );
+		if( ( !g_hasBasic && !g_hasMenu && !g_hasGage && g_partyCount == 0 && !g_itemWnd.open && !g_equipWnd.open && !g_invWnd.open && !g_skillWnd.open ) || indexed || !IsPretransformed( dev ) || !DrawingToScreen( dev ) ) return false;
 		if( upData != nullptr ) AccumulateBounds( info, upData, upStride, VertexCount( info.type, info.primCount ) );
 		else BoundsFromStream( dev, info, startVertex );
 		if( !info.hasBounds ) return false;
+		if( g_hasMenu ) game::MenuRect( g_menu.rect ); // o menu muda de tamanho ao abrir/fechar
 		// barra embaixo do personagem: as imagens no lugar do bloco da janela nativa
 		if( g_hasGage && Within( info, g_gageRect, 1.0f ) ){
 			ReadCaller( info );
@@ -1374,6 +1386,22 @@ namespace {
 				}
 				return true;
 			}
+		}
+		// menu de ícones: o do Zero no lugar do primeiro bloco da janela nativa
+		if( g_hasMenu && Within( info, g_menu.rect, 1.0f ) ){
+			ReadCaller( info );
+			if( g_windowHash == 0 && fabsf( info.minX - g_menu.rect.x ) <= 1 && fabsf( info.minY - g_menu.rect.y ) <= 1 ){
+				g_windowHash = g_drawHash;
+			}
+			if( g_windowHash != 0 && g_drawHash == g_windowHash ){
+				if( !g_menuDrawn ){
+					g_menuDrawn = true;
+					DrawZeroMenuUi( dev );
+				}
+				return true;
+			}
+			if( g_menuDrawn ) return FollowCursor( dev, info, upData, upStride );
+			return false;
 		}
 		client::WndRect basic = g_basicRect;
 		basic.h += 10; // botão nativo de expandir, logo abaixo
@@ -1481,7 +1509,20 @@ namespace {
 		else{ ReleaseTiles( w.prev ); w.shownId = 0; }
 	}
 
-	void GameFrameEnd(){
+	void GameFrameEnd( IDirect3DDevice9* dev ){
+		g_menuDrawn = false;
+		g_hasMenu = GameHudOn( config::FEAT_MENU ) && game::ReadMenu( g_menu );
+		if( g_hasMenu ){
+			// a janela nativa fica no canto superior esquerdo do menu do Zero (escondida embaixo dele)
+			D3DVIEWPORT9 vp;
+			dev->GetViewport( &vp );
+			float x, y;
+			ui::ZeroMenuOrigin( g_menu.open, (float)vp.Width, (float)vp.Height, x, y );
+			if( g_menu.rect.x != (int)x || g_menu.rect.y != (int)y ){
+				game::PlaceMenu( (int)x, (int)y );
+				g_hasMenu = game::ReadMenu( g_menu );
+			}
+		}
 		g_basicDrawn = g_itemDrawn = g_equipDrawn = g_invDrawn = g_skillDrawn = g_gageDrawn = false;
 		g_hasBasic = GameHudOn( config::FEAT_HUD ) && game::BasicInfoRect( g_basicRect );
 		g_hasGage = config::Get().playerBars && client::InGame() && client::PlayerGageRect( g_gageRect );
@@ -1567,7 +1608,10 @@ namespace {
 			// janela vazia que o cliente não chegou a desenhar: barra por cima no fim do quadro
 			DrawPlayerGage( dev );
 		}
-		GameFrameEnd();
+		if( g_hasMenu && !g_menuDrawn ){
+			DrawZeroMenuUi( dev ); // cliente não desenhou a janela neste quadro: por cima de tudo
+		}
+		GameFrameEnd( dev );
 		if( !g_sceneShown && ( client::IsSelectActive() || client::IsCreatingSelect() ) && config::CustomActive() && config::Feature( config::FEAT_SELECT )
 			&& cfg.mode == config::BackgroundMode::Replace ){
 			CoverWithScene( dev );

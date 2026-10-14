@@ -133,6 +133,7 @@ namespace config {
 		FEAT_EQUIPWND = 512,  // janela de equipamentos nova
 		FEAT_INVWND = 1024,   // inventário novo
 		FEAT_SKILLWND = 2048, // habilidades novas
+		FEAT_MENU = 4096,     // menu de ícones do Ragnarok Zero
 	};
 	bool Feature( unsigned f );
 	void SetCustomActive( bool on );
