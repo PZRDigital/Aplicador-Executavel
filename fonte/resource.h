@@ -4,3 +4,4 @@
 #define IDR_LOGO 103
 #define IDR_FONTE_TITULO 104
 #define IDR_FONTE_TEXTO 105
+#define IDR_FUNDO 106

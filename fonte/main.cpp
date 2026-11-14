@@ -1,4 +1,4 @@
-// Aplicador Codex: embute a interface O Codex (login, seleção e criação) no executável hexed (gerado pelo WARP).
+// Aplicador NexusRO: embute a interface NexusRO (login, seleção e criação) no executável hexed (gerado pelo WARP).
 // O resultado vai para "Aplicados\<data>\" ao lado do aplicador: Codex.exe + char.grf, prontos para copiar no cliente.
 #include <windows.h>
 #include <windowsx.h>
@@ -24,11 +24,12 @@
 #pragma comment( linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"" )
 
 namespace {
-	// ---------------------------------------------------------------- tema O Codex
-	const COLORREF FUNDO = RGB( 7, 12, 22 ), FUNDO_TOPO = RGB( 14, 26, 46 ), PAINEL = RGB( 11, 20, 36 );
-	const COLORREF BORDA = RGB( 32, 62, 96 ), OURO = RGB( 240, 189, 69 ), OURO_CLARO = RGB( 255, 225, 140 );
-	const COLORREF AZUL = RGB( 18, 191, 255 ), AZUL_CLARO = RGB( 124, 227, 255 ), TEXTO = RGB( 244, 247, 251 );
-	const COLORREF APAGADO = RGB( 159, 178, 196 ), ESCURO = RGB( 18, 12, 0 ), ERRO = RGB( 255, 120, 120 ), OK = RGB( 110, 225, 140 );
+	// ---------------------------------------------------------------- tema NexusRO (claro: areia, azul e grafite; janelas sobre a Ilha do Nexus)
+	const COLORREF FUNDO = RGB( 94, 115, 147 ), PAINEL = RGB( 239, 239, 231 ), CAMPO = RGB( 255, 255, 255 ), TOPO = RGB( 246, 246, 241 );
+	const COLORREF BORDA = RGB( 206, 206, 198 ), LINHA = RGB( 214, 214, 206 ), PASSAR = RGB( 232, 237, 246 );
+	const COLORREF AZUL = RGB( 115, 148, 206 ), AZUL_ESCURO = RGB( 82, 114, 176 ), AZUL_FUNDO = RGB( 62, 90, 142 ), AZUL_TEXTO = RGB( 70, 99, 154 );
+	const COLORREF TEXTO = RGB( 41, 41, 41 ), TEXTO_2 = RGB( 74, 74, 74 ), APAGADO = RGB( 95, 95, 89 ), DESLIGADO = RGB( 160, 160, 152 );
+	const COLORREF BRANCO = RGB( 255, 255, 255 );
 
 	enum { ID_ENTRADA = 1001, ID_PROCURAR, ID_APLICAR, ID_ABRIR, ID_LOG, ID_OPCAO = 1100 };
 	const int W = 720, H = 1024;
@@ -48,14 +49,14 @@ namespace {
 		{ embutir::CHAVE, L"Chave Personalizada/Original", L"O jogador pode voltar à seleção original", true, nullptr },
 		{ embutir::COMBATE, L"Postura de combate", L"Selecionado em guarda e com golpe", true, nullptr },
 		{ embutir::FADE, L"Transição rápida", L"Troca de mapa e @refresh sem demora", true, nullptr },
-		{ embutir::STATUS, L"Interface Zero", L"Status, EXP, mapa, chat e atributos (Alt+A)", true, nullptr },
+		{ embutir::STATUS, L"Interface (tema principal)", L"HP, buffs, minimapa, chat e atalhos", true, nullptr },
 		{ embutir::ITEM, L"Janela de item", L"Descrição do item no tema", true, nullptr },
 		{ embutir::EQUIP, L"Equipamentos", L"Alt+Q com atributos e informações", true, nullptr },
 		{ embutir::INVENTARIO, L"Inventário", L"Alt+E com abas, busca e grade", true, nullptr },
 		{ embutir::HABILIDADES, L"Habilidades", L"Alt+S em árvore por classe", true, nullptr },
 		{ embutir::MENU, L"Menu", L"Menu de ícones do Ragnarok Zero", true, nullptr },
 		{ embutir::QUESTS, L"Quests", L"Alt+U no estilo do Ragnarok Zero", true, nullptr },
-		{ embutir::POKEDEX, L"Pokédex", L"Alt+J (pet) como Pokédex, com o pet animado", true, nullptr },
+		{ embutir::POKEDEX, L"Pokédex", L"Alt+J (pet) como Pokédex animada", true, nullptr },
 	};
 	const int N_OPCOES = sizeof( g_opcoes ) / sizeof( g_opcoes[0] );
 
@@ -83,6 +84,7 @@ namespace {
 	HFONT g_titulo, g_sub, g_rotulo, g_texto, g_botao, g_botaoGrande, g_mono;
 	HBRUSH g_brPainel, g_brFundo;
 	Gdiplus::Image* g_logo = nullptr;
+	Gdiplus::Image* g_fundo = nullptr;
 	int g_hover = 0;
 	std::wstring g_ultimaPasta;
 
@@ -177,7 +179,7 @@ namespace {
 			L"COMO INSTALAR\r\n"
 			L"=============\r\n\r\n"
 			L"Copie os arquivos desta pasta para a pasta do cliente, substituindo os existentes:\r\n"
-			L"  - Codex.exe  (executável com a interface O Codex embutida)\r\n"
+			L"  - Codex.exe  (executável com a interface NexusRO embutida)\r\n"
 			L"  - char.grf   (mapa 3D, ícones, fontes e configurações da interface)\r\n\r\n"
 			L"Alterações aplicadas neste executável:\r\n";
 		for( const Opcao& o : g_opcoes ){
@@ -254,57 +256,88 @@ namespace {
 
 	RECT Ret( int x, int y, int w, int h ){ return RECT{ x, y, x + w, y + h }; }
 
+	// janela no estilo do site: fundo areia, borda clara e sombra suave
+	void Janela( HDC dc, RECT r ){
+		{
+			Gdiplus::Graphics g( dc );
+			Gdiplus::SolidBrush sombra( Gdiplus::Color( 50, 0, 0, 0 ) );
+			g.FillRectangle( &sombra, (int)r.left + 2, (int)r.top + 4, (int)( r.right - r.left ), (int)( r.bottom - r.top ) );
+		}
+		Retangulo( dc, r, PAINEL );
+		Moldura( dc, r, BORDA );
+	}
+
 	void Pintar( HDC dc ){
 		RECT tudo = { 0, 0, W, H };
 		Retangulo( dc, tudo, FUNDO );
+		{
+			// fundo: a Ilha do Nexus com o mesmo véu suave do site
+			Gdiplus::Graphics g( dc );
+			if( g_fundo ){
+				g.SetInterpolationMode( Gdiplus::InterpolationModeHighQualityBicubic );
+				g.DrawImage( g_fundo, 0, 0, W, H );
+			}
+			Gdiplus::LinearGradientBrush veu( Gdiplus::Point( 0, 0 ), Gdiplus::Point( 0, H ), Gdiplus::Color( 26, 16, 22, 34 ), Gdiplus::Color( 56, 16, 22, 34 ) );
+			g.FillRectangle( &veu, 0, 0, W, H );
+		}
 		// cabeçalho
-		Degrade( dc, Ret( 0, 0, W, 112 ), FUNDO_TOPO, FUNDO, false );
+		RECT topo = Ret( 20, 18, W - 40, 100 );
+		Janela( dc, topo );
 		if( g_logo ){
 			Gdiplus::Graphics g( dc );
 			g.SetInterpolationMode( Gdiplus::InterpolationModeHighQualityBicubic );
-			g.DrawImage( g_logo, 24, 18, 76, 76 );
+			int lh = 88, lw = (int)( lh * (double)g_logo->GetWidth() / g_logo->GetHeight() );
+			g.DrawImage( g_logo, 32, 24, lw, lh );
 		}
-		Escrever( dc, g_titulo, OURO, L"O CODEX", Ret( 116, 22, 400, 44 ) );
-		Escrever( dc, g_sub, APAGADO, L"Aplicador da interface", Ret( 118, 66, 400, 22 ) );
-		Escrever( dc, g_rotulo, APAGADO, L"INTERFACE", Ret( W - 224, 34, 200, 16 ), DT_RIGHT | DT_SINGLELINE );
-		Escrever( dc, g_texto, OURO_CLARO, DataInterface(), Ret( W - 224, 52, 200, 20 ), DT_RIGHT | DT_SINGLELINE );
-		// linha de destaque azul-dourado
-		Degrade( dc, Ret( 0, 112, W / 4, 2 ), FUNDO, AZUL, true );
-		Degrade( dc, Ret( W / 4, 112, W / 4, 2 ), AZUL, OURO, true );
-		Degrade( dc, Ret( W / 2, 112, W / 4, 2 ), OURO, AZUL, true );
-		Degrade( dc, Ret( 3 * W / 4, 112, W / 4, 2 ), AZUL, FUNDO, true );
+		{
+			// "NEXUS" em grafite e "RO" em azul, como no site
+			HGDIOBJ old = SelectObject( dc, g_titulo );
+			SIZE t;
+			GetTextExtentPoint32W( dc, L"NEXUS ", 6, &t );
+			SelectObject( dc, old );
+			Escrever( dc, g_titulo, TEXTO, L"NEXUS", Ret( 116, 30, 300, 44 ) );
+			Escrever( dc, g_titulo, AZUL_ESCURO, L"RO", Ret( 116 + t.cx, 30, 120, 44 ) );
+		}
+		Escrever( dc, g_sub, APAGADO, L"Aplicador da interface", Ret( 118, 74, 400, 22 ) );
+		Escrever( dc, g_rotulo, APAGADO, L"INTERFACE", Ret( W - 224, 44, 186, 16 ), DT_RIGHT | DT_SINGLELINE );
+		Escrever( dc, g_texto, AZUL_TEXTO, DataInterface(), Ret( W - 224, 62, 186, 20 ), DT_RIGHT | DT_SINGLELINE );
 
 		// painel principal
 		RECT p = Ret( 20, 134, W - 40, 262 );
-		Retangulo( dc, p, PAINEL );
-		Moldura( dc, p, BORDA );
+		Janela( dc, p );
 		Escrever( dc, g_rotulo, APAGADO, L"1   EXECUTÁVEL HEXED  ·  GERADO PELO WARP", Ret( 40, 152, 600, 18 ) );
 		RECT campo = Ret( 40, 176, 506, 36 );
-		Retangulo( dc, campo, RGB( 3, 6, 12 ) );
-		Moldura( dc, campo, GetFocus() == g_entrada ? OURO : BORDA );
-		Escrever( dc, g_texto, APAGADO,
+		Retangulo( dc, campo, CAMPO );
+		Moldura( dc, campo, GetFocus() == g_entrada ? AZUL : BORDA );
+		Escrever( dc, g_texto, TEXTO_2,
 			L"É o executável que o WARP gera depois de aplicar os patches (o \"diffado\"). Também aceita um Codex.exe que "
 			L"já recebeu a interface: ele é refeito com as alterações marcadas. Dá para arrastar o arquivo para cá.",
-			Ret( 40, 222, W - 80, 60 ), DT_LEFT | DT_TOP | DT_WORDBREAK );
-		Escrever( dc, g_rotulo, APAGADO, L"2   DESTINO", Ret( 40, 294, 600, 18 ) );
-		Escrever( dc, g_texto, TEXTO, L"Aplicados\\<data e hora>\\   →   Codex.exe  +  char.grf", Ret( 40, 316, W - 80, 20 ) );
-		Escrever( dc, g_texto, APAGADO, L"Depois, copie o conteúdo da pasta gerada para a pasta do cliente, substituindo os arquivos.",
-			Ret( 40, 342, W - 80, 20 ) );
+			Ret( 40, 220, W - 80, 70 ), DT_LEFT | DT_TOP | DT_WORDBREAK );
+		Retangulo( dc, Ret( 40, 296, W - 80, 1 ), LINHA );
+		Escrever( dc, g_rotulo, APAGADO, L"2   DESTINO", Ret( 40, 308, 600, 18 ) );
+		Escrever( dc, g_texto, TEXTO, L"Aplicados\\<data e hora>\\   →   Codex.exe  +  char.grf", Ret( 40, 330, W - 80, 20 ) );
+		Escrever( dc, g_texto, TEXTO_2, L"Depois, copie o conteúdo da pasta gerada para a pasta do cliente, substituindo os arquivos.",
+			Ret( 40, 356, W - 80, 20 ) );
 
 		// alterações
-		RECT pa = Ret( 20, 410, W - 40, 358 );
-		Retangulo( dc, pa, PAINEL );
-		Moldura( dc, pa, BORDA );
+		RECT pa = Ret( 20, 410, W - 40, 364 );
+		Janela( dc, pa );
 		Escrever( dc, g_rotulo, APAGADO, L"3   ALTERAÇÕES QUE SERÃO APLICADAS", Ret( 40, 428, 600, 18 ) );
-		Escrever( dc, g_texto, RGB( 110, 128, 148 ), L"Criação, chave e postura de combate dependem da seleção de personagem.",
-			Ret( 40, 740, W - 80, 20 ) );
+		Escrever( dc, g_texto, APAGADO, L"Criação, chave e postura de combate dependem da seleção de personagem.",
+			Ret( 40, 746, W - 80, 20 ) );
 
 		// registro
-		Escrever( dc, g_rotulo, APAGADO, L"REGISTRO", Ret( 24, 848, 200, 18 ) );
-		RECT lg = Ret( 20, 868, W - 40, 100 );
-		Retangulo( dc, lg, RGB( 3, 6, 12 ) );
+		RECT pr = Ret( 20, 848, W - 40, 118 );
+		Janela( dc, pr );
+		Escrever( dc, g_rotulo, APAGADO, L"REGISTRO", Ret( 36, 856, 200, 18 ) );
+		RECT lg = Ret( 32, 876, W - 64, 80 );
+		Retangulo( dc, lg, CAMPO );
 		Moldura( dc, lg, BORDA );
-		Escrever( dc, g_texto, RGB( 90, 106, 124 ), L"© O Codex", Ret( W - 220, H - 44, 200, 20 ), DT_RIGHT | DT_SINGLELINE );
+		// assinatura numa etiqueta clara, legível sobre a imagem
+		RECT et = Ret( W - 132, H - 44, 112, 26 );
+		Retangulo( dc, et, TOPO );
+		Moldura( dc, et, BORDA );
+		Escrever( dc, g_texto, APAGADO, L"© NexusRO", et, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
 	}
 
 	void DesenharBotao( const DRAWITEMSTRUCT* d ){
@@ -315,31 +348,31 @@ namespace {
 		if( id >= ID_OPCAO && id < ID_OPCAO + N_OPCOES ){
 			int i = id - ID_OPCAO;
 			bool on = OpcaoAtiva( i ), marcada = g_opcoes[i].marcada && on;
-			Retangulo( dc, r, PAINEL );
-			if( hover && on ) Retangulo( dc, r, RGB( 14, 30, 50 ) );
-			RECT cx = Ret( r.left + 8, r.top + 12, 20, 20 );
-			Retangulo( dc, cx, marcada ? OURO : RGB( 3, 6, 12 ) );
-			Moldura( dc, cx, !on ? RGB( 40, 52, 66 ) : ( marcada ? OURO_CLARO : ( hover ? AZUL_CLARO : BORDA ) ) );
-			if( marcada ) Escrever( dc, g_botao, ESCURO, L"✓", cx, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
-			Escrever( dc, g_botao, on ? ( marcada ? TEXTO : APAGADO ) : RGB( 70, 84, 100 ), g_opcoes[i].nome,
-				Ret( r.left + 38, r.top + 6, r.right - r.left - 40, 20 ) );
-			Escrever( dc, g_texto, on ? RGB( 120, 138, 158 ) : RGB( 60, 72, 86 ), g_opcoes[i].desc,
-				Ret( r.left + 38, r.top + 26, r.right - r.left - 40, 18 ) );
+			Retangulo( dc, r, hover && on ? PASSAR : PAINEL );
+			RECT cx = Ret( r.left + 8, r.top + 10, 20, 20 );
+			Retangulo( dc, cx, marcada ? AZUL_ESCURO : CAMPO );
+			Moldura( dc, cx, !on ? LINHA : ( marcada ? AZUL_FUNDO : ( hover ? AZUL : BORDA ) ) );
+			if( marcada ) Escrever( dc, g_botao, BRANCO, L"✓", cx, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
+			Escrever( dc, g_botao, on ? TEXTO : DESLIGADO, g_opcoes[i].nome,
+				Ret( r.left + 38, r.top + 2, r.right - r.left - 40, 20 ) );
+			Escrever( dc, g_texto, on ? APAGADO : DESLIGADO, g_opcoes[i].desc,
+				Ret( r.left + 38, r.top + 21, r.right - r.left - 40, 18 ) );
 			return;
 		}
 		wchar_t txt[128];
 		GetWindowTextW( d->hwndItem, txt, 128 );
 		if( id == ID_APLICAR ){
-			Retangulo( dc, r, FUNDO );
+			// botão principal: azul do tema com texto branco em Cinzel, como "JOGAR" no site
 			RECT b = r;
 			if( apertado ) OffsetRect( &b, 0, 1 );
-			Degrade( dc, b, ativo ? ( hover ? RGB( 255, 236, 170 ) : OURO_CLARO ) : RGB( 120, 110, 80 ), ativo ? OURO : RGB( 90, 80, 50 ), false );
-			Moldura( dc, b, RGB( 255, 240, 200 ) );
-			Escrever( dc, g_botaoGrande, ESCURO, txt, b, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
+			Retangulo( dc, r, AZUL_FUNDO );
+			Retangulo( dc, b, ativo ? ( hover ? RGB( 74, 104, 163 ) : AZUL_ESCURO ) : DESLIGADO );
+			Moldura( dc, b, AZUL_FUNDO );
+			Escrever( dc, g_botaoGrande, BRANCO, txt, b, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
 		}else{
-			Retangulo( dc, r, hover ? RGB( 10, 40, 60 ) : RGB( 3, 6, 12 ) );
-			Moldura( dc, r, hover ? AZUL_CLARO : RGB( 22, 110, 150 ) );
-			Escrever( dc, g_botao, AZUL_CLARO, txt, r, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
+			Retangulo( dc, r, hover ? PASSAR : CAMPO );
+			Moldura( dc, r, hover ? AZUL : BORDA );
+			Escrever( dc, g_botao, AZUL_TEXTO, txt, r, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
 		}
 	}
 
@@ -401,7 +434,7 @@ namespace {
 	void Aplicar(){
 		std::wstring e = Texto( g_entrada );
 		if( e.empty() ){
-			MessageBoxW( g_wnd, L"Escolha o executável hexed (gerado pelo WARP).", L"O Codex", MB_ICONWARNING );
+			MessageBoxW( g_wnd, L"Escolha o executável hexed (gerado pelo WARP).", L"NexusRO", MB_ICONWARNING );
 			return;
 		}
 		SetWindowTextW( g_log, L"" );
@@ -414,11 +447,11 @@ namespace {
 		if( ok ){
 			g_ultimaPasta = pasta;
 			if( MessageBoxW( g_wnd, L"Interface aplicada!\n\nOs arquivos estão na pasta Aplicados. Abrir a pasta agora?",
-				L"O Codex", MB_ICONINFORMATION | MB_YESNO ) == IDYES ){
+				L"NexusRO", MB_ICONINFORMATION | MB_YESNO ) == IDYES ){
 				ShellExecuteW( g_wnd, L"open", pasta.c_str(), nullptr, nullptr, SW_SHOWNORMAL );
 			}
 		}else{
-			MessageBoxW( g_wnd, L"Não foi possível aplicar. Veja o registro na janela.", L"O Codex", MB_ICONERROR );
+			MessageBoxW( g_wnd, L"Não foi possível aplicar. Veja o registro na janela.", L"NexusRO", MB_ICONERROR );
 		}
 	}
 
@@ -433,18 +466,18 @@ namespace {
 				g_botao = Fonte( L"Inter", 13, FW_BOLD );
 				g_botaoGrande = Fonte( L"Cinzel", 22, FW_BOLD );
 				g_mono = Fonte( L"Inter", 13, FW_NORMAL );
-				g_brPainel = CreateSolidBrush( RGB( 3, 6, 12 ) );
+				g_brPainel = CreateSolidBrush( CAMPO );
 				g_brFundo = CreateSolidBrush( FUNDO );
 				g_entrada = Controle( L"EDIT", L"", ES_AUTOHSCROLL, Ret( 50, 185, 486, 20 ), ID_ENTRADA, g_texto );
 				g_procurar = Controle( L"BUTTON", L"PROCURAR", BS_OWNERDRAW, Ret( 558, 176, 122, 36 ), ID_PROCURAR, g_botao );
 				for( int i = 0; i < N_OPCOES; i++ ){
 					int col = i < 7 ? 0 : 1, lin = i % 7; // 7 por coluna
 					g_opcoes[i].h = Controle( L"BUTTON", g_opcoes[i].nome, BS_OWNERDRAW,
-						Ret( 32 + col * 330, 452 + lin * 46, 318, 44 ), ID_OPCAO + i, g_botao );
+						Ret( 32 + col * 330, 450 + lin * 42, 318, 40 ), ID_OPCAO + i, g_botao );
 				}
-				g_aplicar = Controle( L"BUTTON", L"APLICAR INTERFACE", BS_OWNERDRAW, Ret( 20, 782, W - 40, 54 ), ID_APLICAR, g_botaoGrande );
-				g_log = Controle( L"EDIT", L"", ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL, Ret( 30, 876, W - 52, 86 ), ID_LOG, g_mono );
-				g_abrir = Controle( L"BUTTON", L"ABRIR PASTA APLICADOS", BS_OWNERDRAW, Ret( 20, H - 50, 220, 34 ), ID_ABRIR, g_botao );
+				g_aplicar = Controle( L"BUTTON", L"APLICAR INTERFACE", BS_OWNERDRAW, Ret( 20, 786, W - 40, 50 ), ID_APLICAR, g_botaoGrande );
+				g_log = Controle( L"EDIT", L"", ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL, Ret( 38, 880, W - 76, 72 ), ID_LOG, g_mono );
+				g_abrir = Controle( L"BUTTON", L"ABRIR PASTA APLICADOS", BS_OWNERDRAW, Ret( 20, H - 48, 220, 34 ), ID_ABRIR, g_botao );
 				SendMessageW( g_entrada, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM( 2, 2 ) );
 				LogJanela( L"Escolha o executável hexed e clique em Aplicar interface.", 0 );
 				DragAcceptFiles( h, TRUE );
@@ -469,8 +502,8 @@ namespace {
 				return 1;
 			case WM_CTLCOLOREDIT:
 			case WM_CTLCOLORSTATIC:
-				SetTextColor( (HDC)wp, (HWND)lp == g_log ? APAGADO : TEXTO );
-				SetBkColor( (HDC)wp, RGB( 3, 6, 12 ) );
+				SetTextColor( (HDC)wp, (HWND)lp == g_log ? TEXTO_2 : TEXTO );
+				SetBkColor( (HDC)wp, CAMPO );
 				return (LRESULT)g_brPainel;
 			case WM_DRAWITEM:
 				DesenharBotao( reinterpret_cast<const DRAWITEMSTRUCT*>( lp ) );
@@ -520,7 +553,7 @@ namespace {
 		return DefWindowProcW( h, m, wp, lp );
 	}
 
-	// Linha de comando: "Aplicador Codex.exe" <hexed.exe> [/semgrf]  ->  Aplicados\<data>\ (registro em aplicador.log)
+	// Linha de comando: "Aplicador NexusRO.exe" <hexed.exe> [/semgrf]  ->  Aplicados\<data>\ (registro em aplicador.log)
 	FILE* g_arqLog = nullptr;
 	void LogArquivo( const std::wstring& s, int tipo ){
 		const wchar_t* pre[] = { L"", L"AVISO: ", L"ERRO: ", L"" };
@@ -536,10 +569,10 @@ namespace {
 		}
 	}
 
-	Gdiplus::Image* CarregarLogo(){
+	Gdiplus::Image* CarregarImagem( int id ){
 		const unsigned char* p;
 		DWORD n;
-		if( !Recurso( IDR_LOGO, p, n ) ) return nullptr;
+		if( !Recurso( id, p, n ) ) return nullptr;
 		IStream* s = SHCreateMemStream( p, n );
 		if( !s ) return nullptr;
 		Gdiplus::Image* img = Gdiplus::Image::FromStream( s );
@@ -577,7 +610,8 @@ int WINAPI wWinMain( HINSTANCE inst, HINSTANCE, LPWSTR, int show ){
 	Gdiplus::GdiplusStartup( &token, &gsi, nullptr );
 	CarregarFontes();
 	CarregarOpcoes();
-	g_logo = CarregarLogo();
+	g_logo = CarregarImagem( IDR_LOGO );
+	g_fundo = CarregarImagem( IDR_FUNDO );
 	INITCOMMONCONTROLSEX icc = { sizeof( icc ), ICC_STANDARD_CLASSES };
 	InitCommonControlsEx( &icc );
 
@@ -592,17 +626,18 @@ int WINAPI wWinMain( HINSTANCE inst, HINSTANCE, LPWSTR, int show ){
 	DWORD estilo = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 	RECT r = { 0, 0, W, H };
 	AdjustWindowRect( &r, estilo, FALSE );
-	HWND w = CreateWindowExW( 0, wc.lpszClassName, L"O Codex · Aplicador da interface", estilo,
+	HWND w = CreateWindowExW( 0, wc.lpszClassName, L"NexusRO · Aplicador da interface", estilo,
 		CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, nullptr, nullptr, inst, nullptr );
-	// barra de título escura (Windows 10/11)
-	BOOL escuro = TRUE;
+	// barra de título clara, na cor do cabeçalho do site (Windows 10/11)
+	BOOL escuro = FALSE;
 	HMODULE dwm = LoadLibraryW( L"dwmapi.dll" );
 	if( dwm ){
 		auto f = reinterpret_cast<HRESULT( WINAPI* )( HWND, DWORD, LPCVOID, DWORD )>( GetProcAddress( dwm, "DwmSetWindowAttribute" ) );
 		if( f ){
 			f( w, 20, &escuro, sizeof( escuro ) );
-			COLORREF cap = FUNDO_TOPO;
+			COLORREF cap = TOPO, txt = TEXTO;
 			f( w, 35, &cap, sizeof( cap ) );
+			f( w, 36, &txt, sizeof( txt ) );
 		}
 	}
 	ShowWindow( w, show );
@@ -614,6 +649,7 @@ int WINAPI wWinMain( HINSTANCE inst, HINSTANCE, LPWSTR, int show ){
 		}
 	}
 	delete g_logo;
+	delete g_fundo;
 	Gdiplus::GdiplusShutdown( token );
 	return 0;
 }

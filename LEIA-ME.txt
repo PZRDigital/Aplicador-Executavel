@@ -1,7 +1,7 @@
-APLICADOR CODEX
-===============
+APLICADOR NEXUSRO
+=================
 
-Coloca a interface O Codex (login, seleção de personagem panorâmica e criação de personagem)
+Coloca a interface NexusRO (login, seleção de personagem panorâmica e criação de personagem)
 dentro do executável do cliente. Use sempre que gerar um executável novo no WARP.
 
 O que é o "executável hexed"?
@@ -16,7 +16,7 @@ Executável que já recebeu a interface
   No WARP: não é mais preciso o patch de DLL "codex_ui", e a opção de ASLR deve ficar desligada.
 
 Como usar
-1. Abra "Aplicador Codex.exe".
+1. Abra "Aplicador NexusRO.exe".
 2. Escolha o executável hexed (botão PROCURAR, ou arraste o arquivo para a janela).
 3. Em "Alterações", marque o que deve entrar neste executável:
      Tela de login                  servidores, login e "conectando" no tema
@@ -25,8 +25,9 @@ Como usar
      Chave Personalizada/Original   (depende da seleção) o jogador pode voltar à original
      Postura de combate             (depende da seleção) selecionado em guarda e com golpe
      Transição rápida               troca de mapa e @refresh sem a demora do fade
-     Interface Zero                 status (classe, HP, SP), barra de EXP, nome do mapa e chat do Ragnarok Zero;
-                                    janela de atributos (Alt+A) com os nomes em português
+     Interface (tema principal)     cartão claro de HP/SP no canto superior esquerdo com os buffs ao lado;
+                                    minimapa grande com nome e coordenadas; chat invisível e barra de atalhos
+                                    no centro, embaixo (F12 troca as linhas); atributos (Alt+A) em português
      Janela de item                 descrição do item no tema
      Equipamentos                   Alt+Q com atributos e informações
      Inventário                     Alt+E com abas, busca e grade
@@ -48,7 +49,7 @@ Se houver uma d3d9.dll ou codex_ui.dll antiga da interface na pasta do cliente, 
 Só funciona na versão do cliente Codex.exe 2025-06-04; outras versões são recusadas.
 
 Linha de comando (automação)
-  "Aplicador Codex.exe" <executável hexed> [/semgrf] [/alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests,pokedex]
+  "Aplicador NexusRO.exe" <executável hexed> [/semgrf] [/alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests,pokedex]
   Sem /alteracoes, aplica todas.
   Gera em Aplicados\<data e hora>\ e grava o registro em aplicador.log (código 0 = sucesso).
 

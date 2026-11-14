@@ -4,13 +4,14 @@
 // A interface compilada (CharSelectPanorama\bin\Release\d3d9.dll) vai dentro do aplicador
 IDR_INTERFACE RCDATA "..\\CharSelectPanorama\\bin\\Release\\d3d9.dll"
 IDI_APP ICON "icone.ico"
-IDR_LOGO RCDATA "..\\CharSelectPanorama\\dist\\charselect\\img\\logo.png"
+IDR_LOGO RCDATA "logo.png"
+IDR_FUNDO RCDATA "fundo.jpg"
 IDR_FONTE_TITULO RCDATA "..\\CharSelectPanorama\\dist\\charselect\\fonts\\Cinzel.ttf"
 IDR_FONTE_TEXTO RCDATA "..\\CharSelectPanorama\\dist\\charselect\\fonts\\Inter.ttf"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION 1,1,0,0
+ PRODUCTVERSION 1,1,0,0
  FILEOS 0x40004L
  FILETYPE 0x1L
 BEGIN
@@ -18,11 +19,11 @@ BEGIN
     BEGIN
         BLOCK "041604b0"
         BEGIN
-            VALUE "CompanyName", "O Codex"
-            VALUE "FileDescription", "Aplicador da interface O Codex"
-            VALUE "FileVersion", "1.0"
-            VALUE "ProductName", "Aplicador Codex"
-            VALUE "ProductVersion", "1.0"
+            VALUE "CompanyName", "NexusRO"
+            VALUE "FileDescription", "Aplicador da interface NexusRO"
+            VALUE "FileVersion", "1.1"
+            VALUE "ProductName", "Aplicador NexusRO"
+            VALUE "ProductVersion", "1.1"
         END
     END
     BLOCK "VarFileInfo"

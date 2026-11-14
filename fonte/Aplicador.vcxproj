@@ -21,7 +21,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup>
-    <TargetName>Aplicador Codex</TargetName>
+    <TargetName>Aplicador NexusRO</TargetName>
     <OutDir>$(ProjectDir)..\</OutDir>
     <IntDir>$(ProjectDir)obj\</IntDir>
   </PropertyGroup>
