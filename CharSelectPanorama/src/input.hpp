@@ -21,6 +21,15 @@ namespace input {
 	Point RealCursor();       // posição real do mouse (viewport)
 	Point CursorOffset();     // real - informado ao cliente (para mover o cursor desenhado)
 	bool IsLeftDown();
+	// último aperto do botão direito entregue ao cliente (GetTickCount e ponto na viewport), se já foi solto,
+	// e repetir o clique no mesmo ponto
+	bool LastRightClick( unsigned& tick, Point& at );
+	bool RightReleased();
+	void NudgeMouse(); // movimento no ponto do último clique direito (o cliente só aceita clique com o mouse em cima)
+	void RepeatRightClick( bool down ); // aperto e soltura em quadros diferentes (o cliente lê uma vez por quadro)
+	// Chamado pelo RedirectFn no clique: o botão esquerdo não chega ao cliente até ser solto
+	// (o clique é tratado pela interface nova; senão o jogo o toma como clique no mapa e anda)
+	void SwallowClick();
 	bool TakeDiagRequest();   // F11 (debug): registrar um quadro
 	// ESC na seleção: a interface nova trata (o cliente não recebe a tecla)
 	void SetEscapeCapture( bool on );

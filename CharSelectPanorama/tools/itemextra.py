@@ -7,7 +7,7 @@ Saída: dist/charselect/itemextra.txt, uma linha por item:
   id=preco|flags|mob:chance,mob:chance,...
   flags: R = refinável, T = sem troca, V = sem venda, D = sem drop, A = sem armazém, G = sem armazém da guilda
   chance em centésimos de % (rate do rAthena: 10000 = 100%)
-E dist/charselect/monstros.txt: id=nome (para os nomes dos que dropam).
+E dist/charselect/monstros.txt: id=nome (para os nomes dos que dropam) e municao.txt: id=tipo da munição.
 
 Uso: python3 tools/itemextra.py <pasta do emulador>
 """
@@ -95,7 +95,11 @@ def main():
     open( os.path.join( base, 'itemextra.txt' ), 'w', encoding='utf-8' ).write( '\n'.join( out ) + '\n' )
     nomes = [ '%d=%s' % ( mid, mobs[mid].get( 'Name', mobs[mid].get( 'AegisName', '' ) ) ) for mid in sorted( usados ) ]
     open( os.path.join( base, 'monstros.txt' ), 'w', encoding='utf-8' ).write( '\n'.join( nomes ) + '\n' )
-    print( 'itemextra: %d itens, %d monstros' % ( len( out ), len( nomes ) ) )
+    # munição: id=tipo (Arrow, Bullet, Shuriken...), para o encaixe de munição da janela Personagem
+    mun = [ '%d=%s' % ( iid, items[iid].get( 'SubType', '' ) ) for iid in sorted( items )
+        if str( items[iid].get( 'Type', '' ) ).lower() == 'ammo' and items[iid].get( 'SubType' ) ]
+    open( os.path.join( base, 'municao.txt' ), 'w', encoding='utf-8' ).write( '\n'.join( mun ) + '\n' )
+    print( 'itemextra: %d itens, %d monstros, %d munições' % ( len( out ), len( nomes ), len( mun ) ) )
 
 
 if __name__ == '__main__':

@@ -43,6 +43,9 @@ namespace {
 		{ L"Tahoma", L"Arial", 11, FW_NORMAL, NONANTIALIASED_QUALITY }, // ZeroSmall
 		{ L"Tahoma", L"Arial", 13, FW_BOLD, NONANTIALIASED_QUALITY },   // ZeroName
 		{ L"Tahoma", L"Arial", 12, FW_NORMAL, NONANTIALIASED_QUALITY }, // ZeroMedium
+		{ L"Inter", L"Segoe UI", 12, FW_NORMAL },   // Text12
+		{ L"Inter", L"Segoe UI", 12, FW_SEMIBOLD }, // Text12Bold
+		{ L"Inter", L"Segoe UI", 15, FW_SEMIBOLD }, // Title15
 	};
 
 	struct TextEntry {
@@ -90,6 +93,10 @@ float4 main( float2 uv : TEXCOORD0, float4 col : COLOR0 ) : COLOR0 {
 
 	HDC g_dc = nullptr;
 	HFONT g_fonts[(int)gfx::Font::COUNT] = {};
+	// Fontes suavizadas: desenhadas em SS vezes o tamanho e reduzidas pela média (sem o serrilhado do hinting do
+	// GDI em tamanhos pequenos, principalmente no negrito). As do Zero (sem suavização) ficam no tamanho real.
+	constexpr int SS = 4;
+	HFONT g_fontsHi[(int)gfx::Font::COUNT] = {};
 	std::unordered_map<std::wstring, TextEntry> g_textCache;
 	std::list<std::wstring> g_textLru;
 
@@ -114,12 +121,22 @@ float4 main( float2 uv : TEXCOORD0, float4 col : COLOR0 ) : COLOR0 {
 				f = nullptr;
 			}
 		}
+		for( HFONT& f : g_fontsHi ){
+			if( f != nullptr ){
+				DeleteObject( f );
+				f = nullptr;
+			}
+		}
 		for( int i = 0; i < (int)gfx::Font::COUNT; i++ ){
 			const FontSpec& spec = FONT_SPECS[i];
 			const wchar_t* face = FontAvailable( spec.face ) ? spec.face : spec.fallback;
 			int px = (int)( spec.size * g_uiScale + 0.5f );
 			g_fonts[i] = CreateFontW( -px, 0, 0, 0, spec.weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 				OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, spec.quality, DEFAULT_PITCH, face );
+			if( spec.quality != NONANTIALIASED_QUALITY ){
+				g_fontsHi[i] = CreateFontW( -px * SS, 0, 0, 0, spec.weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+					OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, face );
+			}
 		}
 	}
 
@@ -164,19 +181,25 @@ float4 main( float2 uv : TEXCOORD0, float4 col : COLOR0 ) : COLOR0 {
 			return &it->second;
 		}
 
-		HFONT old = (HFONT)SelectObject( g_dc, g_fonts[(int)font] );
+		HFONT hi = g_fontsHi[(int)font];
+		int ss = hi != nullptr ? SS : 1;
+		HFONT old = (HFONT)SelectObject( g_dc, hi != nullptr ? hi : g_fonts[(int)font] );
 		SIZE size = {};
 		GetTextExtentPoint32W( g_dc, text.c_str(), (int)text.size(), &size );
 		TEXTMETRICW tm;
 		GetTextMetricsW( g_dc, &tm );
+		// medidas no tamanho real (a versão grande é reduzida ss vezes)
+		size.cx = ( size.cx + ss - 1 ) / ss;
+		tm.tmHeight = ( tm.tmHeight + ss - 1 ) / ss;
 
 		unsigned w = (unsigned)std::max<LONG>( 1, size.cx + 4 );
 		unsigned h = (unsigned)std::max<LONG>( 1, tm.tmHeight + 2 );
 
+		unsigned bw = w * ss, bh = h * ss;
 		BITMAPINFO bi = {};
 		bi.bmiHeader.biSize = sizeof( bi.bmiHeader );
-		bi.bmiHeader.biWidth = (LONG)w;
-		bi.bmiHeader.biHeight = -(LONG)h;
+		bi.bmiHeader.biWidth = (LONG)bw;
+		bi.bmiHeader.biHeight = -(LONG)bh;
 		bi.bmiHeader.biPlanes = 1;
 		bi.bmiHeader.biBitCount = 32;
 		void* bits = nullptr;
@@ -184,20 +207,30 @@ float4 main( float2 uv : TEXCOORD0, float4 col : COLOR0 ) : COLOR0 {
 		TextEntry entry;
 		if( bmp != nullptr ){
 			HBITMAP oldBmp = (HBITMAP)SelectObject( g_dc, bmp );
-			memset( bits, 0, w * h * 4 );
+			memset( bits, 0, bw * bh * 4 );
 			SetBkMode( g_dc, TRANSPARENT );
 			SetTextColor( g_dc, RGB( 255, 255, 255 ) );
-			TextOutW( g_dc, 2, 1, text.c_str(), (int)text.size() );
+			TextOutW( g_dc, 2 * ss, 1 * ss, text.c_str(), (int)text.size() );
 			GdiFlush();
 
-			// Texto branco; a cobertura vira o alfa
-			DWORD* px = static_cast<DWORD*>( bits );
-			for( unsigned i = 0; i < w * h; i++ ){
-				DWORD c = px[i];
-				DWORD a = std::max( { c & 0xFF, ( c >> 8 ) & 0xFF, ( c >> 16 ) & 0xFF } );
-				px[i] = ( a << 24 ) | 0x00FFFFFF;
+			// Texto branco; a cobertura vira o alfa (média dos ss x ss pontos de cada pixel)
+			const DWORD* src = static_cast<const DWORD*>( bits );
+			std::vector<DWORD> out( w * h );
+			for( unsigned y = 0; y < h; y++ ){
+				for( unsigned x = 0; x < w; x++ ){
+					unsigned sum = 0;
+					for( int sy = 0; sy < ss; sy++ ){
+						const DWORD* row = src + ( y * ss + sy ) * bw + x * ss;
+						for( int sx = 0; sx < ss; sx++ ){
+							DWORD c = row[sx];
+							sum += std::max( { c & 0xFF, ( c >> 8 ) & 0xFF, ( c >> 16 ) & 0xFF } );
+						}
+					}
+					DWORD a = sum / ( ss * ss );
+					out[y * w + x] = ( a << 24 ) | 0x00FFFFFF;
+				}
 			}
-			entry.tex = UploadBgra( g_dev, w, h, bits, w * 4 );
+			entry.tex = UploadBgra( g_dev, w, h, out.data(), w * 4 );
 			SelectObject( g_dc, oldBmp );
 			DeleteObject( bmp );
 		}
@@ -611,11 +644,12 @@ void gfx::DrawImage( const Image& img, float x, float y, float w, float h, D3DCO
 }
 
 float gfx::TextWidth( Font font, const std::wstring& text ){
-	HFONT old = (HFONT)SelectObject( g_dc, g_fonts[(int)font] );
+	HFONT hi = g_fontsHi[(int)font]; // mesma medida do texto desenhado (versão grande reduzida)
+	HFONT old = (HFONT)SelectObject( g_dc, hi != nullptr ? hi : g_fonts[(int)font] );
 	SIZE size = {};
 	GetTextExtentPoint32W( g_dc, text.c_str(), (int)text.size(), &size );
 	SelectObject( g_dc, old );
-	return (float)size.cx;
+	return hi != nullptr ? (float)( ( size.cx + SS - 1 ) / SS ) : (float)size.cx;
 }
 
 float gfx::LineHeight( Font font ){
@@ -624,6 +658,12 @@ float gfx::LineHeight( Font font ){
 	GetTextMetricsW( g_dc, &tm );
 	SelectObject( g_dc, old );
 	return (float)tm.tmHeight;
+}
+
+namespace { bool g_shadows = true; } // sombra do texto (desligada nas telas de tema claro)
+
+void gfx::SetTextShadows( bool on ){
+	g_shadows = on;
 }
 
 float gfx::Text( Font font, const std::wstring& text, float x, float y, D3DCOLOR color, int align, float maxWidth, bool shadow ){
@@ -652,7 +692,7 @@ float gfx::Text( Font font, const std::wstring& text, float x, float y, D3DCOLOR
 
 	SetTextured( true );
 	g_dev->SetTexture( 0, e->tex );
-	if( shadow ){
+	if( shadow && g_shadows ){
 		D3DCOLOR sc = D3DCOLOR_ARGB( ( ( color >> 24 ) & 0xFF ) * 3 / 4, 0, 0, 0 );
 		Quad( x + 1, y + 1, (float)e->texWidth, (float)e->texHeight, sc, sc, sc, sc );
 	}

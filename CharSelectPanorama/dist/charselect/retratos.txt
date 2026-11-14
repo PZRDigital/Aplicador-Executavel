@@ -1,0 +1,5 @@
+# Retrato da conversa com NPC (sem cutin no script): parte do nome do NPC = ilustração da pasta
+# data\texture\유저인터페이스\illust\ (as das GRFs do cliente: kafra_01.bmp, kafra_02.bmp...).
+# O nome é o primeiro "[...]" da fala; a primeira linha que bater vale. Use .bmp (magenta = transparente).
+Kafra = kafra_01.bmp
+Funcionária Kafra = kafra_01.bmp

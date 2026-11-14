@@ -6,12 +6,14 @@ Uso: python3 substituicoes.py <pasta do cliente> [saída]
   abre esses arquivos no lugar dos originais.
   - chat: botões e campos do chat do Ragnarok Zero (base/zero_chat = UIRenewal\\chat dos patches do kRO Zero)
     com os nomes do basic_interface que o cliente usa;
-  - janela de atributos (Alt+A): nomes em português (statwin_ptbr.py).
+  - Alt+Q, Alt+A e Alt+S: imagens próprias das janelas no estilo da proposta 2 (skin_janelas.py);
+  - barra de atalhos: shortcut_frame transparente (os quadrados são desenhados pela DLL).
 """
 import io, os, sys
 from PIL import Image
 from grf import Vfs
-import statwin_ptbr
+import skin_janelas
+import personagem_bmp
 
 BASE = 'data\\texture\\유저인터페이스\\basic_interface\\'
 # nome no cliente -> nome no chat do Zero (mesma função)
@@ -24,6 +26,13 @@ CHAT = {
     'lock_dragwnd': 'lock_dragwnd', 'unlock_dragwnd': 'unlock_dragwnd',
     'dialog_btn0': 'dialog_btn0', 'dialog_btn1': 'dialog_btn1', 'dialog_btn2': 'dialog_btn2',
     'dialog_left': 'dialog_left', 'dialog_right': 'dialog_right', 'dialog_mid': 'resizer',
+}
+
+
+# sprite montado -> nome da paleta da classe sem montaria
+MONTARIAS = {
+    '페코페코_기사': '기사', '로드페코': '로드나이트',
+    '신페코크루세이더': '크루', '구페코크루세이더': '크루', '페코팔라딘': '팔라딘',
 }
 
 
@@ -53,10 +62,42 @@ def main():
         f = os.path.join( zero, zero_nome + '.bmp' )
         if os.path.exists( f ):
             grava( ( BASE + cliente_nome + '.bmp' ).encode( 'cp949' ), open( f, 'rb' ).read() )
-    for k, im in statwin_ptbr.imagens( Vfs( cliente ) ).items():
+    # barra de atalhos: fundo transparente (magenta); a DLL desenha os quadrados cinza da referência por baixo
+    U = 'data\\texture\\유저인터페이스\\'
+    b = io.BytesIO()
+    Image.new( 'RGB', ( 290, 34 ), ( 255, 0, 255 ) ).save( b, format='BMP' )
+    grava( ( U + 'shortcut\\shortcut_frame.bmp' ).encode( 'cp949' ), b.getvalue() )
+    # Alt+Q, Alt+A e Alt+S nativos com as imagens no estilo da proposta 2 (skin_janelas.py)
+    for k, im in skin_janelas.imagens( Vfs( cliente ) ).items():
         b = io.BytesIO()
-        im.save( b, format='BMP' )
+        im.convert( 'RGB' ).save( b, format='BMP' )
         grava( k, b.getvalue() )
+    # janela Personagem desenhada pelo cliente (src/charwnd.cpp)
+    for k, im in personagem_bmp.imagens().items():
+        b = io.BytesIO()
+        im.convert( 'RGB' ).save( b, format='BMP' )
+        grava( k, b.getvalue() )
+    # paletas de roupa dos sprites montados que o servidor não tem (ex.: 362 no Lorde montado): a da classe
+    # sem montaria (senão o cliente avisa "Cannot find File" e o personagem perde a cor)
+    v = Vfs( cliente )
+    pa = 'data\\palette\\몸\\'.encode( 'cp949' )
+    tem = {}
+    for g in v.grfs:
+        for k in g.entries:
+            if k.startswith( pa ) and k.endswith( b'.pal' ):
+                tem.setdefault( k[len( pa ):], k )
+    copias = 0
+    for montado, base in MONTARIAS.items():
+        for sexo in ( '남', '여' ):
+            pre_b = ( base + '_' + sexo + '_' ).encode( 'cp949' )
+            pre_m = ( montado + '_' + sexo + '_' ).encode( 'cp949' )
+            for nome in list( tem ):
+                if nome.startswith( pre_b ) and nome[len( pre_b ):-4].isdigit():
+                    alvo = pre_m + nome[len( pre_b ):]
+                    if alvo not in tem:
+                        grava( pa + alvo, v.read( tem[nome] ) )
+                        copias += 1
+    print( 'paletas de montaria: %d' % copias )
     open( os.path.join( dest, 'lista.txt' ), 'w', encoding='utf-8' ).write( '\n'.join( lista ) + '\n' )
     print( 'substituições: %d imagens em %s' % ( len( lista ), os.path.normpath( dest ) ) )
 

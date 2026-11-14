@@ -5,11 +5,14 @@
 #   captura <nome>      salva a área do cliente em CharSelectPanorama\testes\<nome>.png
 #   clique <x> <y>      clique esquerdo em coordenadas do cliente
 #   duplo <x> <y>       clique duplo
+#   direito <x> <y>     clique com o botão direito
 #   tecla <vk>          pressiona uma tecla (código virtual, ex.: 27 = Esc)
 #   digitar <texto>     envia texto (sintaxe SendKeys: {ENTER}, etc.)
 #   rajada <x,y> <n>    clica em x,y e captura n quadros seguidos (reduzidos) em testes\rajada\
 #   atalho <vk,vk> [n]  aperta a combinação (ex.: 18,86 = Alt+V) e captura n quadros em testes\rajada\
 #   arrastar <x,y> <x2,y2>  segura o botão em x,y, arrasta até x2,y2 capturando quadros em testes\rajada\
+#   percorrer <x,y> <x2,y2> move o mouse (sem apertar) de x,y até x2,y2 capturando quadros em testes\rajada\
+#   roda <n> [x,y]      gira a roda do mouse n vezes (negativo = para baixo/afastar) no ponto x,y
 #   fechar              encerra o Codex
 param(
 	[Parameter(Mandatory = $true)][string]$Acao,
@@ -40,7 +43,9 @@ public static class W {
 '@
 
 function Janela {
-	$p = Get-Process Codex -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+	# CODEX_ULTIMO=1: o cliente aberto por último (teste com dois clientes)
+	$todos = Get-Process Codex -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\Cliente 2025\Codex.exe' } | Where-Object { $_.MainWindowHandle -ne 0 } | Sort-Object StartTime
+	$p = if ($env:CODEX_ULTIMO) { $todos | Select-Object -Last 1 } else { $todos | Select-Object -First 1 }
 	if (-not $p) { throw 'Janela do Codex nao encontrada' }
 	return $p.MainWindowHandle
 }
@@ -62,11 +67,11 @@ switch ($Acao) {
 		$msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
 		& $msbuild (Join-Path $projeto 'CharSelectPanorama.vcxproj') /p:Configuration=Release /p:Platform=Win32 /m /v:minimal /nologo
 		if ($LASTEXITCODE -ne 0) { throw "Falha na compilacao ($LASTEXITCODE)" }
-		if (Get-Process Codex -ErrorAction SilentlyContinue) { Get-Process Codex | Stop-Process -Force; Start-Sleep -Seconds 1 }
+		$c = Get-Process Codex -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\Cliente 2025\Codex.exe' }; if ($c) { $c | Stop-Process -Force; Start-Sleep -Seconds 1 }
 		Write-Host 'OK: compilado (bin\Release\d3d9.dll); use tools/publicar.sh para embutir no Codex.exe'
 	}
 	'abrir' {
-		Get-Process Codex -ErrorAction SilentlyContinue | Stop-Process -Force
+		Get-Process Codex -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\Cliente 2025\Codex.exe' } | Stop-Process -Force
 		Start-Process -FilePath (Join-Path $cliente '#Start.bat') -WorkingDirectory $cliente
 		Write-Host 'OK: cliente iniciado'
 	}
@@ -84,14 +89,15 @@ switch ($Acao) {
 	'clique' { Mover ([int]$A) ([int]$B); Clicar; Write-Host "OK: clique $A,$B" }
 	'duplo' { Mover ([int]$A) ([int]$B); Clicar; Start-Sleep -Milliseconds 90; Clicar; Write-Host "OK: duplo $A,$B" }
 	'mover' { Mover ([int]$A) ([int]$B); Write-Host "OK: mouse em $A,$B" }
+	'direito' { Mover ([int]$A) ([int]$B); [W]::mouse_event(0x08, 0, 0, 0, 0); Start-Sleep -Milliseconds 120; [W]::mouse_event(0x10, 0, 0, 0, 0); Write-Host "OK: clique direito em $A,$B" }
 	'tecla' {
 		[W]::SetForegroundWindow((Janela)) | Out-Null
 		[W]::keybd_event([byte][int]$A, 0, 0, 0); Start-Sleep -Milliseconds 60; [W]::keybd_event([byte][int]$A, 0, 2, 0)
 		Write-Host "OK: tecla $A"
 	}
 	'roda' {
-		# gira a roda do mouse N vezes (negativo = afastar)
-		Mover 800 450
+		# gira a roda do mouse N vezes (negativo = afastar); B = "x,y" onde (padrão: centro)
+		if ($B) { $p = $B.Split(','); Mover ([int]$p[0]) ([int]$p[1]) } else { Mover 800 450 }
 		$n = [int]$A
 		for ($i = 0; $i -lt [Math]::Abs($n); $i++) {
 			[W]::mouse_event(0x0800, 0, 0, [Math]::Sign($n) * 120, 0); Start-Sleep -Milliseconds 120
@@ -194,6 +200,37 @@ switch ($Acao) {
 		$g.Dispose(); $gs.Dispose(); $bmp.Dispose(); $small.Dispose()
 		Write-Host "OK: arrastado de $A para $B, $n quadros em $dir"
 	}
-	'fechar' { Get-Process Codex -ErrorAction SilentlyContinue | Stop-Process -Force; Write-Host 'OK: cliente fechado' }
+	'percorrer' {
+		# move o mouse sem apertar, capturando (reduzido) a cada passo
+		$h = Janela
+		$r = New-Object W+RECT; [W]::GetClientRect($h, [ref]$r) | Out-Null
+		$o = New-Object W+POINT; [W]::ClientToScreen($h, [ref]$o) | Out-Null
+		$w = $r.R - $r.L; $hh = $r.B - $r.T
+		$dir = Join-Path $saida 'rajada'
+		New-Item -ItemType Directory -Force -Path $dir | Out-Null
+		Get-ChildItem $dir -Filter *.png | Remove-Item
+		$p1 = $A.Split(','); $p2 = $B.Split(',')
+		Mover ([int]$p1[0]) ([int]$p1[1])
+		$bmp = New-Object System.Drawing.Bitmap $w, $hh
+		$g = [System.Drawing.Graphics]::FromImage($bmp)
+		$small = New-Object System.Drawing.Bitmap ([int]($w / 2)), ([int]($hh / 2))
+		$gs = [System.Drawing.Graphics]::FromImage($small)
+		Start-Sleep -Milliseconds 120
+		$n = 24
+		for ($i = 1; $i -le $n; $i++) {
+			$x = [int]$p1[0] + ([int]$p2[0] - [int]$p1[0]) * $i / $n
+			$y = [int]$p1[1] + ([int]$p2[1] - [int]$p1[1]) * $i / $n
+			$q = New-Object W+POINT; $q.X = $x; $q.Y = $y
+			[W]::ClientToScreen($h, [ref]$q) | Out-Null
+			[W]::SetCursorPos($q.X, $q.Y) | Out-Null
+			Start-Sleep -Milliseconds 60
+			$g.CopyFromScreen($o.X, $o.Y, 0, 0, $bmp.Size)
+			$gs.DrawImage($bmp, 0, 0, $small.Width, $small.Height)
+			$small.Save((Join-Path $dir ('{0:D3}.png' -f $i)))
+		}
+				$g.Dispose(); $gs.Dispose(); $bmp.Dispose(); $small.Dispose()
+		Write-Host "OK: movido de $A para $B, $n quadros em $dir"
+	}
+	'fechar' { Get-Process Codex -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\Cliente 2025\Codex.exe' } | Stop-Process -Force; Write-Host 'OK: cliente fechado' }
 	default { throw "Acao desconhecida: $Acao" }
 }

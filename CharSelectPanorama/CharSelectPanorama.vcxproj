@@ -76,6 +76,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\chardata.cpp" />
+    <ClCompile Include="src\charwnd.cpp" />
     <ClCompile Include="src\client.cpp" />
     <ClCompile Include="src\config.cpp" />
     <ClCompile Include="src\d3d_hooks.cpp" />
@@ -95,6 +96,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\chardata.hpp" />
+    <ClInclude Include="src\charwnd.hpp" />
     <ClInclude Include="src\client.hpp" />
     <ClInclude Include="src\config.hpp" />
     <ClInclude Include="src\d3d_hooks.hpp" />

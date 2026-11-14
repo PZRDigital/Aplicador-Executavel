@@ -56,7 +56,13 @@ namespace {
 		SecureZeroMemory( buf, sizeof( buf ) );
 	}
 
+	// exclusão antiga (CH_DELETE_CHAR 0x0068 / 0x01FB, GID em +2): a resposta HC_ACCEPT_DELETECHAR (0x006F) não diz qual
+	volatile uint32_t g_deletingGid = 0;
+
 	int WSAAPI Hook_send( SOCKET s, const char* buf, int len, int flags ){
+		if( len >= 6 && ( *reinterpret_cast<const uint16_t*>( buf ) == 0x0068 || *reinterpret_cast<const uint16_t*>( buf ) == 0x01FB ) ){
+			g_deletingGid = *reinterpret_cast<const uint32_t*>( buf + 2 );
+		}
 		if( len > (int)SSO_FIXED && *reinterpret_cast<const uint16_t*>( buf ) == CA_SSO_LOGIN_REQ
 			&& *reinterpret_cast<const uint16_t*>( buf + 2 ) == len
 			&& len - SSO_FIXED == 5 && memcmp( buf + SSO_FIXED, "token", 5 ) == 0 ){
@@ -183,6 +189,11 @@ namespace {
 	// tamanho; os pacotes curtos só são aceitos no início do bloco recebido.
 	std::vector<chardata::Server> g_servers;
 
+	bool KnownGid( uint32_t gid ){
+		for( const auto& kv : g_chars ) if( kv.second.gid == gid && gid != 0 ) return true;
+		return false;
+	}
+
 	void Scan( std::string& stream, size_t chunkStart ){
 		const uint8_t* b = reinterpret_cast<const uint8_t*>( stream.data() );
 		size_t n = stream.size();
@@ -210,14 +221,15 @@ namespace {
 						chardata::Server sv;
 						sv.name = Widen( reinterpret_cast<const char*>( b + k + 6 ), 20, config::Get().codepage );
 						sv.users = Rd<uint16_t>( b, k + 26 );
+						logger::Write( "Servidor de personagem: %u.%u.%u.%u:%u", b[k], b[k + 1], b[k + 2], b[k + 3], (unsigned)Rd<uint16_t>( b, k + 4 ) );
 						g_servers.push_back( sv );
 					}
 					logger::Write( "Login aceito: %u servidores de personagem", (unsigned)g_servers.size() );
 				}
 			}else if( id == HC_ACCEPT_MAKECHAR && i == chunkStart && i + 2 + CHAR_INFO_SIZE <= n ){
 				StoreCharacter( b + i + 2 );
-			}else if( ( id == HC_DELETE_CHAR3_RESERVED || id == HC_DELETE_CHAR3_CANCEL ) && i == chunkStart
-				&& i + ( id == HC_DELETE_CHAR3_RESERVED ? 14u : 10u ) <= n && Rd<int32_t>( b, i + 6 ) == 1 ){
+			}else if( ( id == HC_DELETE_CHAR3_RESERVED || id == HC_DELETE_CHAR3_CANCEL )
+				&& i + ( id == HC_DELETE_CHAR3_RESERVED ? 14u : 10u ) <= n && Rd<int32_t>( b, i + 6 ) == 1 && KnownGid( Rd<uint32_t>( b, i + 2 ) ) ){
 				// Exclusão agendada (com a data) ou cancelada
 				uint32_t gid = Rd<uint32_t>( b, i + 2 );
 				for( auto& kv : g_chars ){
@@ -225,7 +237,8 @@ namespace {
 						kv.second.deleteDate = id == HC_DELETE_CHAR3_RESERVED ? DeleteDateFromRemaining( Rd<int32_t>( b, i + 10 ) ) : 0;
 					}
 				}
-			}else if( id == HC_DELETE_CHAR3 && i == chunkStart && i + 10 <= n && Rd<int32_t>( b, i + 6 ) == 1 ){
+			}else if( id == HC_DELETE_CHAR3 && i + 10 <= n && Rd<int32_t>( b, i + 6 ) == 1 && KnownGid( Rd<uint32_t>( b, i + 2 ) ) ){
+				// (vem logo depois da lista reenviada, no mesmo bloco: vale em qualquer posição se o personagem existe)
 				uint32_t gid = Rd<uint32_t>( b, i + 2 );
 				for( auto it = g_chars.begin(); it != g_chars.end(); ++it ){
 					if( it->second.gid == gid ){
@@ -251,6 +264,13 @@ namespace {
 			size_t chunkStart = stream.size();
 			stream.append( buf, r );
 			Scan( stream, chunkStart );
+			// HC_ACCEPT_DELETECHAR (0x006F) tem só 2 bytes (a varredura olha 4): exclusão antiga aceita
+			if( r == 2 && (uint8_t)buf[0] == 0x6F && buf[1] == 0 && g_deletingGid != 0 ){
+				for( auto it = g_chars.begin(); it != g_chars.end(); ++it ){
+					if( it->second.gid == g_deletingGid ){ g_chars.erase( it ); break; }
+				}
+				g_deletingGid = 0;
+			}
 			if( stream.size() > STREAM_KEEP ){
 				stream.erase( 0, stream.size() - STREAM_KEEP );
 			}

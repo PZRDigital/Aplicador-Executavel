@@ -139,4 +139,7 @@ namespace config {
 	};
 	bool Feature( unsigned f );
 	void SetCustomActive( bool on );
+	// Ícones de NPC no minimapa (botão "NPC" no canto dele; salvo em preferencias.ini)
+	bool MinimapIcons();
+	void SetMinimapIcons( bool on );
 }

@@ -7,6 +7,9 @@
 #include "log.hpp"
 #include "chardata.hpp"
 #include "d3d_hooks.hpp"
+#include "charwnd.hpp"
+#include "game.hpp"
+#include <cmath>
 
 namespace {
 	using DtorFn = void*( __thiscall* )( void* self, unsigned flags );
@@ -155,6 +158,12 @@ namespace {
 		}
 	}
 
+	bool ReadWnd( uintptr_t wnd, client::WndRect& r );
+	uintptr_t SlotWindow( int index );
+	void( *g_selectPaint )( void* ) = nullptr;
+	client::WndRect g_cardOrig[32];
+	int g_cardOrigN = 0;
+
 	void __fastcall HookOnDraw( void* self, void* /*edx*/ ){
 		if( self == g_selectWnd ){
 			ApplyAction( self );
@@ -162,6 +171,7 @@ namespace {
 		g_inSelectDraw = true;
 		g_origOnDraw( self );
 		g_inSelectDraw = false;
+		if( self == g_selectWnd && g_selectPaint ) g_selectPaint( self );
 	}
 
 	void* __fastcall HookDtor( void* self, void* /*edx*/, unsigned flags ){
@@ -195,6 +205,14 @@ namespace {
 		g_origOnCreate( self, cx, cy );
 		g_creatingSelect = false;
 		g_selectWnd = self;
+		// posição original dos cartões: o cliente desenha os bonecos nela mesmo depois que a seleção hardcoded
+		// leva as janelas dos slots para a lista
+		g_cardOrigN = 0;
+		for( int i = 0; i < 32 && i < client::SlotsOnPage(); i++ ){
+			uintptr_t sw = SlotWindow( i );
+			if( !sw || !ReadWnd( sw, g_cardOrig[i] ) ) break;
+			g_cardOrigN = i + 1;
+		}
 		logger::Write( "Selecao de personagem aberta (%d x %d)", cx, cy );
 
 		if( config::Get().debug ){
@@ -252,6 +270,16 @@ namespace {
 		g_login[K].origOnDraw( self );
 	}
 
+}
+
+bool client::ReplaceLoginOnDraw( LoginWnd k, void( __thiscall* fn )( void* ) ){
+	Tracked& t = g_login[(int)k];
+	if( t.origOnDraw == nullptr ) return false; // não instalado: o chamador troca a vtable direto
+	t.origOnDraw = fn;
+	return true;
+}
+
+namespace {
 	template <int K> void InstallLogin(){
 		Tracked& t = g_login[K];
 		if( t.onDraw ){
@@ -397,12 +425,87 @@ namespace {
 	using GageDrawFn = void( __thiscall* )( void* );
 	using GageDtorFn = void*( __thiscall* )( void*, unsigned );
 
+	// Barras desenhadas NA superfície da própria barra nativa (o cliente a põe embaixo do personagem a cada quadro
+	// e compõe a imagem): formato da barra de cast, trilho cinza-escuro arredondado, HP verde (vermelho até 25%)
+	// e SP azul embaixo, 1 px de espaço; cantos em magenta (transparente)
+	uint32_t Q( int r, int g, int b ){ // níveis exatos da superfície X1R5G5B5
+		auto q = []( int v ){ return ( v & 0xF8 ) | ( v >> 5 ); };
+		return RGB( q( r ), q( g ), q( b ) );
+	}
+
+	void PillRows( uintptr_t w, int x, int y, int pw, int ph, uint32_t c ){
+		const float rad = ph * 0.5f;
+		for( int r = 0; r < ph; r++ ){
+			const float dy = r + 0.5f - rad;
+			const int in = (int)( rad - sqrtf( rad * rad - dy * dy ) + 0.5f );
+			if( pw - 2 * in > 0 ) charwnd::Fill( w, x + in, y + r, pw - 2 * in, 1, c );
+		}
+	}
+
+	// top < 0: centralizadas na altura da superfície; senão a partir dessa linha. fundo = cor fora da pílula: magenta
+	// (transparente) no mapa; dentro de outra janela a cor do painel, porque o magenta é copiado para a superfície
+	// da janela e vira um buraco até o mapa (os cantos apareciam lilás/escuros e a ponta parecia reta)
+	void PaintGageBars( uintptr_t w, int hp, int maxHp, int sp, int maxSp, bool withSp, int top = -1, uint32_t fundo = RGB( 255, 0, 255 ) ){
+		const int W = *reinterpret_cast<int*>( w + client::OFS_WND_WIDTH ), H = *reinterpret_cast<int*>( w + client::OFS_WND_HEIGHT );
+		charwnd::Fill( w, 0, 0, W, H, fundo );
+		if( W <= 0 || H <= 0 ) return;
+		withSp = withSp && H >= 5;
+		const int bh = withSp ? ( ( H - 1 ) / 2 < 5 ? ( H - 1 ) / 2 : 5 ) : ( H < 5 ? H : 5 );
+		const int total = withSp ? bh * 2 + 1 : bh;
+		const int y0 = top >= 0 && top + total <= H ? top : ( H - total ) / 2;
+		auto bar = [&]( int y, int cur, int max, uint32_t fill, uint32_t shine ){
+			PillRows( w, 0, y, W, bh, Q( 50, 52, 56 ) );
+			const float r = max > 0 ? (float)cur / (float)max : 0.0f;
+			const int fw = (int)( W * ( r < 0 ? 0 : ( r > 1 ? 1 : r ) ) );
+			if( fw < 2 ) return;
+			PillRows( w, 0, y, fw < bh ? bh : fw, bh, fill );
+			if( bh >= 4 && fw > 4 ) charwnd::Fill( w, 2, y + 1, fw - 4, 1, shine );
+		};
+		const bool low = maxHp > 0 && hp * 4 <= maxHp;
+		bar( y0, hp, maxHp, low ? Q( 232, 76, 64 ) : Q( 82, 222, 58 ), low ? Q( 255, 170, 160 ) : Q( 170, 255, 150 ) );
+		if( withSp ) bar( y0 + bh + 1, sp, maxSp, Q( 64, 132, 240 ), Q( 160, 200, 255 ) );
+	}
+
+	// Tamanho de antes (quando a DLL desenhava por cima): 1,08x a largura nativa (60 -> 64), faixas de 5 px
+	// (HP + 1 + SP = 11) e a do jogador 1/4 da altura das barras mais para baixo. A superfície da barra cresce para
+	// isso (o cliente a centraliza com x - 32: InstallPlayerGage troca os "- 30" do executável) e o topo fica
+	// onde o cliente põe (y nativo)
+	constexpr int GAGE_W = 64, GAGE_BAR = 5;
+
+	bool FitGage( uintptr_t w, int width, int height ){
+		const int W = *reinterpret_cast<int*>( w + client::OFS_WND_WIDTH ), H = *reinterpret_cast<int*>( w + client::OFS_WND_HEIGHT );
+		return ( W == width && H == height ) || game::ResizeSurface( w, width, height );
+	}
+
+	void SafePaintGageBars( uintptr_t w, int hp, int maxHp, int sp, int maxSp, bool withSp, int top ){
+		__try{ PaintGageBars( w, hp, maxHp, sp, maxSp, withSp, top ); }__except( EXCEPTION_EXECUTE_HANDLER ){}
+	}
+
+	void SafeInvalidate( uintptr_t w, uintptr_t expectVt ){
+		__try{
+			const uintptr_t vt = *reinterpret_cast<const uintptr_t*>( w );
+			if( vt != expectVt ) return;
+			reinterpret_cast<void( __thiscall* )( uintptr_t )>( *reinterpret_cast<const uintptr_t*>( vt + 38 * 4 ) )( w ); // Invalidate
+		}__except( EXCEPTION_EXECUTE_HANDLER ){}
+	}
+
+	int g_playerNativeH = 0; // altura que o cliente deu à barra do jogador (antes de crescer)
+	int g_paintedHp = -1, g_paintedSp = -1, g_paintedMaxHp = -1, g_paintedMaxSp = -1;
+
 	void __fastcall PlayerGageDraw( void* self, void* ){
-		if( *reinterpret_cast<int*>( reinterpret_cast<uintptr_t>( self ) + OFS_GAGE_TYPE ) == 7 ){
+		const uintptr_t w = reinterpret_cast<uintptr_t>( self );
+		game::Status st;
+		if( *reinterpret_cast<int*>( w + OFS_GAGE_TYPE ) == 7 || !game::ReadStatus( st ) ){
 			reinterpret_cast<GageDrawFn>( PLAYER_GAGE_DRAW )( self );
 			return;
 		}
-		g_playerGage = reinterpret_cast<uintptr_t>( self );
+		if( g_playerGage != w ){ g_playerGage = w; g_playerNativeH = *reinterpret_cast<int*>( w + client::OFS_WND_HEIGHT ); }
+		const int total = GAGE_BAR * 2 + 1;
+		int top = (int)floorf( ( g_playerNativeH - total ) * 0.5f + total * config::Get().playerBarDown );
+		if( top < 0 ) top = 0;
+		FitGage( w, GAGE_W, g_playerNativeH > top + total ? g_playerNativeH : top + total );
+		SafePaintGageBars( w, st.hp, st.maxHp, st.sp, st.maxSp, true, top );
+		g_paintedHp = st.hp; g_paintedSp = st.sp; g_paintedMaxHp = st.maxHp; g_paintedMaxSp = st.maxSp;
 	}
 
 	void* __fastcall PlayerGageDtor( void* self, void*, unsigned flags ){
@@ -415,15 +518,31 @@ namespace {
 	constexpr uintptr_t PC_GAGE_DTOR = 0x83B410, PC_GAGE_DRAW = 0x853E40;
 	constexpr int MAX_PC_GAGES = 64;
 	uintptr_t g_pcGages[MAX_PC_GAGES] = {};
+	DWORD g_pcGageTick[MAX_PC_GAGES] = {}; // último desenho: barra que o cliente parou de desenhar não conta
 
+	// membros do grupo (embaixo deles e na janela de grupo): +0x9C 0 = só HP, +0xA0/A4 hp/máx, +0xA8/AC sp/máx
 	void __fastcall PcGageDraw( void* self, void* ){
 		uintptr_t p = reinterpret_cast<uintptr_t>( self );
 		int free = -1;
-		for( int i = 0; i < MAX_PC_GAGES; i++ ){
-			if( g_pcGages[i] == p ) return;
-			if( g_pcGages[i] == 0 && free < 0 ) free = i;
+		bool known = false;
+		for( int i = 0; i < MAX_PC_GAGES && !known; i++ ){
+			if( g_pcGages[i] == p ){ g_pcGageTick[i] = GetTickCount(); known = true; }
+			else if( g_pcGages[i] == 0 && free < 0 ) free = i;
 		}
-		if( free >= 0 ) g_pcGages[free] = p;
+		if( !known && free >= 0 ){ g_pcGages[free] = p; g_pcGageTick[free] = GetTickCount(); }
+		__try{
+			const bool withSp = *reinterpret_cast<int*>( p + 0x9C ) != 0;
+			// as de baixo dos personagens no tamanho de antes; as da janela de grupo ficam no lugar da lista
+			const uintptr_t parent = *reinterpret_cast<uintptr_t*>( p + 0x10 );
+			const bool inWindow = parent != 0 && *reinterpret_cast<uintptr_t*>( parent ) == 0xFF0B9C;
+			if( !inWindow ){
+				const int H = *reinterpret_cast<int*>( p + client::OFS_WND_HEIGHT ), total = withSp ? GAGE_BAR * 2 + 1 : GAGE_BAR;
+				FitGage( p, GAGE_W, H > total ? H : total );
+			}
+			PaintGageBars( p, *reinterpret_cast<int*>( p + 0xA0 ), *reinterpret_cast<int*>( p + 0xA4 ),
+				*reinterpret_cast<int*>( p + 0xA8 ), *reinterpret_cast<int*>( p + 0xAC ), withSp, inWindow ? -1 : 0,
+				inWindow ? Q( 239, 239, 231 ) : RGB( 255, 0, 255 ) );
+		}__except( EXCEPTION_EXECUTE_HANDLER ){}
 	}
 
 	void* __fastcall PcGageDtor( void* self, void*, unsigned flags ){
@@ -432,18 +551,30 @@ namespace {
 		return reinterpret_cast<GageDtorFn>( PC_GAGE_DTOR )( self, flags );
 	}
 
+	constexpr uintptr_t VT_MESSENGER_GROUP = 0xFF0B9C; // janela de grupo / amigos (Alt+H, Alt+Z)
+
 	bool ReadPcGage( uintptr_t w, client::PartyGage& g ){
 		__try{
 			if( *reinterpret_cast<const uintptr_t*>( w ) != VT_PC_GAGE ) return false;
 			g.rect.x = *reinterpret_cast<const int*>( w + client::OFS_WND_X );
 			g.rect.y = *reinterpret_cast<const int*>( w + client::OFS_WND_Y );
+			// escondida (+0x28 = SetShow), ela ou uma das mães: não aparece
+			if( *reinterpret_cast<const int*>( w + 0x28 ) == 0 ) return false;
 			// dentro de outra janela (grupo) a posição é relativa à mãe (+0x10): soma até a tela
 			uintptr_t parent = *reinterpret_cast<const uintptr_t*>( w + 0x10 );
+			const int relX = g.rect.x, relY = g.rect.y;
+			g.inWindow = parent != 0 && *reinterpret_cast<const uintptr_t*>( parent ) == VT_MESSENGER_GROUP;
+			if( g.inWindow ){
+				g.window.w = *reinterpret_cast<const int*>( parent + client::OFS_WND_WIDTH );
+				g.window.h = *reinterpret_cast<const int*>( parent + client::OFS_WND_HEIGHT );
+			}
 			for( int depth = 0; parent != 0 && depth < 8; depth++ ){
+				if( *reinterpret_cast<const int*>( parent + 0x28 ) == 0 ) return false;
 				g.rect.x += *reinterpret_cast<const int*>( parent + client::OFS_WND_X );
 				g.rect.y += *reinterpret_cast<const int*>( parent + client::OFS_WND_Y );
 				parent = *reinterpret_cast<const uintptr_t*>( parent + 0x10 );
 			}
+			if( g.inWindow ){ g.window.x = g.rect.x - relX; g.window.y = g.rect.y - relY; }
 			g.rect.w = *reinterpret_cast<const int*>( w + client::OFS_WND_WIDTH );
 			g.rect.h = *reinterpret_cast<const int*>( w + client::OFS_WND_HEIGHT );
 			g.withSp = *reinterpret_cast<const int*>( w + 0x9C ) != 0;
@@ -481,14 +612,40 @@ bool client::InstallPlayerGage(){
 	}else{
 		logger::Write( "ERRO: UIPcGage diferente do esperado; barras do grupo continuam nativas" );
 	}
-	logger::Write( "Barras de HP/SP do personagem e do grupo: imagens no lugar das nativas" );
+	// centralização das barras embaixo do personagem: x - 30 (metade de 60) vira x - 32 (metade de GAGE_W)
+	const uintptr_t center[] = { 0xD17DB6, 0xD1849A, 0xD19B01, 0xD17E25, 0xD18505, 0xD19BCD }; // jogador; membros
+	int patched = 0;
+	for( uintptr_t a : center ){
+		uint8_t* b = reinterpret_cast<uint8_t*>( a );
+		if( b[0] != 0x83 || b[1] != 0xE8 || ( b[2] != 0x1E && b[2] != GAGE_W / 2 ) ) continue;
+		DWORD old;
+		VirtualProtect( b, 3, PAGE_EXECUTE_READWRITE, &old );
+		b[2] = (uint8_t)( GAGE_W / 2 );
+		VirtualProtect( b, 3, old, &old );
+		patched++;
+	}
+	FlushInstructionCache( GetCurrentProcess(), nullptr, 0 );
+	logger::Write( "Barras de HP/SP do personagem e do grupo: pintadas nas nativas (%d/6 centralizações)", patched );
 	return true;
 }
 
 int client::PartyGages( PartyGage* out, int max ){
 	int n = 0;
-	for( uintptr_t w : g_pcGages ){
-		if( w != 0 && n < max && ReadPcGage( w, out[n] ) ) n++;
+	for( int i = 0; i < MAX_PC_GAGES; i++ ){
+		uintptr_t w = g_pcGages[i];
+		if( w == 0 || n >= max ) continue;
+		// as da janela de grupo só "desenham" quando a janela repinta (ao abrir, ao mudar algo): valem enquanto
+		// estiverem na janela aberta (ReadPcGage confere a visibilidade das mães); o cliente esconde as sem
+		// membro em x = -100
+		bool inWindow = false;
+		__try{
+			uintptr_t parent = *reinterpret_cast<const uintptr_t*>( w + 0x10 );
+			inWindow = parent != 0 && *reinterpret_cast<const uintptr_t*>( parent ) == VT_MESSENGER_GROUP;
+			if( inWindow && *reinterpret_cast<const int*>( w + OFS_WND_X ) < 0 ) continue;
+		}__except( EXCEPTION_EXECUTE_HANDLER ){ continue; }
+		// (as do mundo também só "desenham" quando o cliente as repinta: parado, passava do prazo e a barra sumia.
+		// Vale a que tem o bloco dela desenhado no quadro: d3d_hooks só põe a barra sobre o próprio bloco)
+		if( ReadPcGage( w, out[n] ) ) n++;
 	}
 	return n;
 }
@@ -634,8 +791,27 @@ int client::SlotsPerPage(){
 
 bool client::CardRect( int index, WndRect& out ){
 	// Os cartões guardam a posição relativa à janela de seleção
+	if( index >= 0 && index < g_cardOrigN ){
+		out = g_cardOrig[index];
+		return true;
+	}
 	uintptr_t slot = SlotWindow( index );
 	return slot != 0 && ReadWnd( slot, out );
+}
+
+int client::SlotIndexOf( void* wnd ){
+	for( int i = 0; i < client::SlotsOnPage() && i < 64; i++ ){
+		if( SlotWindow( i ) == reinterpret_cast<uintptr_t>( wnd ) ) return i;
+	}
+	return -1;
+}
+
+void* client::SlotWindowAt( int index ){
+	return reinterpret_cast<void*>( SlotWindow( index ) );
+}
+
+void client::SetSelectPaint( void( *fn )( void* ) ){
+	g_selectPaint = fn;
 }
 
 void client::SetSelectedAction( int action, int frameMs, int attackAction, int attackEveryMs ){
@@ -798,4 +974,13 @@ void client::LogGeometry(){
 			logger::Write( "  cartao %d: (%d,%d) %dx%d", i, c.x, c.y, c.w, c.h );
 		}
 	}
+}
+
+void client::RefreshPlayerGage(){
+	// a barra do jogador é pintada com o status do personagem: repinta quando ele muda
+	const uintptr_t w = g_playerGage;
+	game::Status st;
+	if( w == 0 || !game::ReadStatus( st ) ) return;
+	if( st.hp == g_paintedHp && st.sp == g_paintedSp && st.maxHp == g_paintedMaxHp && st.maxSp == g_paintedMaxSp ) return;
+	SafeInvalidate( w, VT_PLAYER_GAGE );
 }

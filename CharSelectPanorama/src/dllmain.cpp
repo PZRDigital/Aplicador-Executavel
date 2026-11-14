@@ -6,6 +6,7 @@
 #include <windows.h>
 #include <d3d9.h>
 
+#include "charwnd.hpp"
 #include "client.hpp"
 #include "config.hpp"
 #include "d3d_hooks.hpp"
@@ -157,6 +158,22 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, LPVOID ){
 			client::Install();
 			if( config::Feature( config::FEAT_HUD ) || config::Feature( config::FEAT_ITEMWND ) || config::Feature( config::FEAT_MENU ) || config::Feature( config::FEAT_QUESTWND ) || config::Feature( config::FEAT_PETWND ) ) game::InstallEarly();
 			if( config::Feature( config::FEAT_HUD ) ) skin::InstallFiles(); // chat do Zero e atributos em português
+			if( config::Feature( config::FEAT_HUD ) ) game::DisableStatusWindow(); // atributos ficam na janela Personagem (Alt+Q)
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::Install(); // janela Personagem desenhada pelo cliente
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallSkills(); // e a de habilidades
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallInventory(); // e o inventário
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallStorage(); // e o armazém
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallCartAndSearch(); // carrinho e pesquisa do armazém
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallItemWindow(); // e a descrição do item
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallNpc(); // conversa com NPC (fala e menu)
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallShop(); // lojas de NPC
+			if( config::Feature( config::FEAT_HUD ) ) charwnd::InstallMerchant(); // lojas de mercador (Comércio)
+			if( config::Feature( config::FEAT_LOGIN ) || config::Feature( config::FEAT_HUD ) ) charwnd::InstallMessageBox(); // avisos do cliente
+			if( config::Feature( config::FEAT_LOGIN ) ) charwnd::InstallLogin(); // login no estilo antigo, na própria janela
+			if( config::Feature( config::FEAT_LOGIN ) ) charwnd::InstallWait(); // e o "Conectando"
+			if( config::Feature( config::FEAT_LOGIN ) ) charwnd::InstallServer(); // e a escolha do servidor
+			if( config::Feature( config::FEAT_SELECT ) ) charwnd::InstallSelect(); // seleção de personagem na própria janela
+			if( config::Feature( config::FEAT_MAKE ) ) charwnd::InstallMake(); // e a criação
 			if( config::Feature( config::FEAT_FADE ) ) client::InstallFastFade( config::Get().fadeMs );
 			if( config::Get().playerBars ) client::InstallPlayerGage();
 			bool custom = config::CustomActive() && config::Feature( config::FEAT_COMBAT );

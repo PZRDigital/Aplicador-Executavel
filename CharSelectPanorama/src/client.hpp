@@ -63,6 +63,8 @@ namespace client {
 	void* LoginWindow( LoginWnd which );   // instância aberta (nullptr = fechada)
 	bool LoginWindowRect( LoginWnd which, WndRect& out );
 	bool MessageText( void* messageBox, std::string& out ); // texto da UIMessageBox (cp1252)
+	// troca o desenho original de uma janela de entrada acompanhada (o acompanhamento continua); false = não acompanhada
+	bool ReplaceLoginOnDraw( LoginWnd k, void( __thiscall* fn )( void* ) );
 	void* LoginWindowRaw( LoginWnd which );  // ponteiro mesmo se escondida (depuração)
 	bool AnyLoginWindow();
 	bool InGame();                          // já entrou no mapa (fim das telas de entrada)
@@ -76,7 +78,10 @@ namespace client {
 	int SlotsOnPage();   // cartões na página atual
 	int IndexInPage();   // cartão selecionado na página
 	int SlotsPerPage();
-	bool CardRect( int index, WndRect& out ); // relativo à janela de seleção
+	bool CardRect( int index, WndRect& out ); // relativo à janela de seleção (posição original do cartão: os sprites saem nela)
+	int SlotIndexOf( void* wnd );             // índice do cartão (UISlotForSelectWnd) na página; -1 = não é
+	void* SlotWindowAt( int index );
+	void SetSelectPaint( void( *fn )( void* ) ); // depois do OnDraw da seleção (seleção hardcoded)
 	bool MakeWindowRect( WndRect& out );      // janela de criação (tela)
 	void* MakeWindow();
 
@@ -113,11 +118,14 @@ namespace client {
 	// DLL desenha as imagens no lugar. PlayerGageRect = janela da barra na tela (false se não existe).
 	bool InstallPlayerGage();
 	bool PlayerGageRect( WndRect& out );
+	void RefreshPlayerGage(); // repinta a barra do jogador quando o HP/SP muda (chamado a cada quadro)
 	// Barras de HP dos membros do grupo (UIPcGage): embaixo deles e dentro da janela de grupo
 	struct PartyGage {
 		WndRect rect;
 		int hp = 0, maxHp = 0, sp = 0, maxSp = 0;
 		bool withSp = false;
+		bool inWindow = false; // dentro da janela de grupo; window = retângulo dela na tela
+		WndRect window;
 	};
 	int PartyGages( PartyGage* out, int max );
 	void SetSelectedAction( int action, int frameMs = 110, int attackAction = -1, int attackEveryMs = 6000 );

@@ -59,7 +59,7 @@ namespace {
 	std::wstring SkinFile( const char* name ){
 		if( name[0] == '.' && ( name[1] == '\\' || name[1] == '/' ) ) name += 2;
 		const char* dot = strrchr( name, '.' );
-		if( dot == nullptr || ( _stricmp( dot, ".bmp" ) != 0 && _stricmp( dot, ".tga" ) != 0 ) ) return std::wstring();
+		if( dot == nullptr || ( _stricmp( dot, ".bmp" ) != 0 && _stricmp( dot, ".tga" ) != 0 && _stricmp( dot, ".pal" ) != 0 ) ) return std::wstring(); // imagens e paletas de roupa
 		uint32_t h = Fnv( name );
 		std::lock_guard<std::mutex> g( g_lock );
 		auto it = g_files.find( h );

@@ -6,11 +6,14 @@
 #include "log.hpp"
 
 namespace {
-	// IAT do Codex.exe: user32!GetPhysicalCursorPos
+	// IAT do Codex.exe: user32!GetPhysicalCursorPos e GetAsyncKeyState
 	constexpr uintptr_t IAT_GETPHYSICALCURSORPOS = 0xFA1644;
+	constexpr uintptr_t IAT_GETASYNCKEYSTATE = 0xFA1658;
 
 	using GetPhysicalCursorPosFn = BOOL( WINAPI* )( LPPOINT );
 	GetPhysicalCursorPosFn o_GetPhysicalCursorPos = nullptr;
+	using GetAsyncKeyStateFn = SHORT( WINAPI* )( int );
+	GetAsyncKeyStateFn o_GetAsyncKeyState = nullptr;
 
 	HWND g_hwnd = nullptr;
 	WNDPROC g_origWndProc = nullptr;
@@ -18,6 +21,23 @@ namespace {
 	float g_vpWidth = 0.0f, g_vpHeight = 0.0f;
 	input::Point g_real, g_reported;
 	bool g_leftDown = false;
+	// clique engolido: pedido pelo redirecionamento no botão apertado; até soltar, o cliente não vê o
+	// botão esquerdo (nem pelas mensagens nem pelo GetAsyncKeyState, que ele também consulta)
+	bool g_swallowAsked = false, g_swallowing = false;
+	POINT g_lastMove = { -1, -1 }; // último WM_MOUSEMOVE entregue ao cliente (já redirecionado)
+
+	// Depois de um clique levado a outro ponto (ex.: X nativo), o cursor do cliente ficaria lá até o mouse
+	// se mexer: um pouco depois, um movimento até onde o mouse está de verdade
+	constexpr UINT_PTR TIMER_RESYNC = 0xC0DE;
+	void CALLBACK ResyncCursor( HWND hwnd, UINT, UINT_PTR id, DWORD ){
+		KillTimer( hwnd, id );
+		POINT p;
+		if( !GetCursorPos( &p ) || !ScreenToClient( hwnd, &p ) ) return;
+		RECT rc;
+		GetClientRect( hwnd, &rc );
+		if( p.x < 0 || p.y < 0 || p.x >= rc.right || p.y >= rc.bottom ) return;
+		PostMessageA( hwnd, WM_MOUSEMOVE, ( GetKeyState( VK_LBUTTON ) & 0x8000 ) ? MK_LBUTTON : 0, MAKELPARAM( p.x, p.y ) );
+	}
 	bool g_photoMode = false;
 	int g_wheel = 0;
 	volatile bool g_textCapture = false;
@@ -46,6 +66,7 @@ namespace {
 	// Aplica o redirecionamento a um ponto em coordenadas do cliente.
 	POINT Redirect( POINT client ){
 		g_real = ClientToViewport( client );
+		g_swallowAsked = false;
 		input::Point target;
 		if( g_redirect != nullptr && g_redirect( g_real, target ) ){
 			g_reported = target;
@@ -69,6 +90,25 @@ namespace {
 		return ok;
 	}
 
+	SHORT WINAPI Hook_GetAsyncKeyState( int vk ){
+		if( vk == VK_LBUTTON && g_swallowing ) return 0;
+		return o_GetAsyncKeyState( vk );
+	}
+
+	// IAT: troca a entrada se ela aponta para a função real (senão o cliente já foi alterado por outro)
+	template <typename Fn> bool HookIat( uintptr_t at, const char* name, Fn hook, Fn& original ){
+		HMODULE user32 = GetModuleHandleW( L"user32.dll" );
+		FARPROC real = user32 ? GetProcAddress( user32, name ) : nullptr;
+		uintptr_t* slot = reinterpret_cast<uintptr_t*>( at );
+		if( real == nullptr || *slot != reinterpret_cast<uintptr_t>( real ) ) return false;
+		original = reinterpret_cast<Fn>( real );
+		DWORD old;
+		VirtualProtect( slot, sizeof( *slot ), PAGE_READWRITE, &old );
+		*slot = reinterpret_cast<uintptr_t>( hook );
+		VirtualProtect( slot, sizeof( *slot ), old, &old );
+		return true;
+	}
+
 	volatile bool g_diagRequest = false;
 	volatile bool g_escCapture = false;
 	float g_tgX = 0, g_tgY = 0, g_tgW = 0, g_tgH = 0;
@@ -82,6 +122,9 @@ namespace {
 		return p.x >= g_tgX && p.x < g_tgX + g_tgW && p.y >= g_tgY && p.y < g_tgY + g_tgH;
 	}
 	volatile bool g_escPressed = false;
+	volatile DWORD g_rightTick = 0;   // último clique direito (soltar) entregue ao cliente
+	volatile LPARAM g_rightLp = 0;
+	volatile bool g_rightUp = true;
 
 	LRESULT CALLBACK WndProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ){
 		if( g_textCapture ){
@@ -153,8 +196,29 @@ namespace {
 				POINT client = { (short)LOWORD( lp ), (short)HIWORD( lp ) };
 				POINT mapped = Redirect( client );
 				lp = MAKELPARAM( mapped.x, mapped.y );
+				bool swallow = false;
+				if( msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK ){
+					g_swallowing = swallow = g_swallowAsked;
+				}else if( msg == WM_LBUTTONUP && g_swallowing ){
+					g_swallowing = false;
+					swallow = true;
+				}
 				if( msg != WM_MOUSEMOVE && config::Get().debug ){
-					logger::Write( "mouse msg=0x%X real=(%d,%d) cliente ve=(%d,%d)", msg, client.x, client.y, mapped.x, mapped.y );
+					logger::Write( "mouse msg=0x%X real=(%d,%d) cliente ve=(%d,%d)%s", msg, client.x, client.y, mapped.x, mapped.y, swallow ? " (engolido)" : "" );
+				}
+				if( swallow ) return 0;
+				if( msg == WM_RBUTTONDOWN ){ g_rightLp = lp; g_rightTick = GetTickCount(); g_rightUp = false; }
+				else if( msg == WM_RBUTTONUP ) g_rightUp = true;
+				if( msg == WM_LBUTTONUP && ( mapped.x != client.x || mapped.y != client.y ) ){
+					SetTimer( hwnd, TIMER_RESYNC, 300, &ResyncCursor );
+				}
+				if( msg == WM_MOUSEMOVE ){
+					g_lastMove = mapped;
+				}else if( ( msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK ) && ( mapped.x != g_lastMove.x || mapped.y != g_lastMove.y ) ){
+					// o aperto vai para outro ponto (ex.: X nativo): antes, o cursor "chega" lá, como num mouse de
+					// verdade; os botões do cliente só aceitam o clique depois de ficarem com o mouse em cima
+					CallWindowProcA( g_origWndProc, hwnd, WM_MOUSEMOVE, wp & ~MK_LBUTTON, lp );
+					g_lastMove = mapped;
 				}
 				break;
 			}
@@ -170,18 +234,13 @@ void input::Install( HWND hwnd ){
 	g_hwnd = hwnd;
 	g_origWndProc = reinterpret_cast<WNDPROC>( SetWindowLongA( hwnd, GWL_WNDPROC, reinterpret_cast<LONG>( &WndProc ) ) );
 
-	HMODULE user32 = GetModuleHandleW( L"user32.dll" );
-	FARPROC real = user32 ? GetProcAddress( user32, "GetPhysicalCursorPos" ) : nullptr;
-	uintptr_t* slot = reinterpret_cast<uintptr_t*>( IAT_GETPHYSICALCURSORPOS );
-	if( real != nullptr && *slot == reinterpret_cast<uintptr_t>( real ) ){
-		o_GetPhysicalCursorPos = reinterpret_cast<GetPhysicalCursorPosFn>( real );
-		DWORD old;
-		VirtualProtect( slot, sizeof( *slot ), PAGE_READWRITE, &old );
-		*slot = reinterpret_cast<uintptr_t>( &Hook_GetPhysicalCursorPos );
-		VirtualProtect( slot, sizeof( *slot ), old, &old );
+	if( HookIat<GetPhysicalCursorPosFn>( IAT_GETPHYSICALCURSORPOS, "GetPhysicalCursorPos", &Hook_GetPhysicalCursorPos, o_GetPhysicalCursorPos ) ){
 		logger::Write( "Entrada interceptada (janela %p)", hwnd );
 	}else{
 		logger::Write( "AVISO: IAT de GetPhysicalCursorPos nao confere; so as mensagens da janela serao redirecionadas" );
+	}
+	if( !HookIat<GetAsyncKeyStateFn>( IAT_GETASYNCKEYSTATE, "GetAsyncKeyState", &Hook_GetAsyncKeyState, o_GetAsyncKeyState ) ){
+		logger::Write( "AVISO: IAT de GetAsyncKeyState nao confere; cliques engolidos ainda chegam pelo estado do botao" );
 	}
 }
 
@@ -214,6 +273,10 @@ bool input::PhotoMode(){
 
 bool input::IsLeftDown(){
 	return g_leftDown;
+}
+
+void input::SwallowClick(){
+	g_swallowAsked = true;
 }
 
 bool input::TakeDiagRequest(){
@@ -265,4 +328,31 @@ std::wstring input::TakeTyped(){
 	std::wstring t;
 	t.swap( g_typed );
 	return t;
+}
+
+bool input::RightReleased(){ return g_rightUp; }
+
+bool input::LastRightClick( unsigned& tick, Point& at ){
+	if( g_rightTick == 0 ) return false;
+	tick = g_rightTick;
+	at = ClientToViewport( { (short)LOWORD( g_rightLp ), (short)HIWORD( g_rightLp ) } );
+	return true;
+}
+
+void input::NudgeMouse(){
+	if( g_hwnd ) PostMessageA( g_hwnd, WM_MOUSEMOVE, 0, g_rightLp );
+}
+
+void input::RepeatRightClick( bool down ){
+	if( g_hwnd == nullptr || g_rightTick == 0 ) return;
+	// o cliente lê o estado do botão de verdade: clique de sistema, só com o cursor ainda no mesmo ponto
+	POINT c;
+	if( down ){
+		if( !GetCursorPos( &c ) || !ScreenToClient( g_hwnd, &c ) ) return;
+		if( abs( c.x - (short)LOWORD( g_rightLp ) ) > 3 || abs( c.y - (short)HIWORD( g_rightLp ) ) > 3 ) return;
+	}
+	INPUT in = {};
+	in.type = INPUT_MOUSE;
+	in.mi.dwFlags = down ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
+	SendInput( 1, &in, sizeof( in ) );
 }

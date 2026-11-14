@@ -338,10 +338,11 @@ namespace {
 		unsigned flags;
 	};
 #pragma pack( pop )
-	volatile CodexFeatures g_features = { { 'C', 'O', 'D', 'E', 'X', '_', 'F', 'E', 'A', 'T', '0', '1' }, 0x707Fu }; // padrão (publicar.sh): login a fade + barra de status, menu e quests do Zero + Pokédex
+	volatile CodexFeatures g_features = { { 'C', 'O', 'D', 'E', 'X', '_', 'F', 'E', 'A', 'T', '0', '1' }, 0x74FFu }; // padrão (publicar.sh): login a fade + barra de status, menu e quests do Zero + Pokédex (Alt+Q, Alt+A e Alt+S nativos com skin)
 }
 
 bool config::Feature( unsigned f ){
+	if( f & FEAT_TOGGLE ) return false; // sem a versão original: só a personalizada (pedido do usuário, 2026-10-26)
 	unsigned flags = g_features.flags;
 	if( ( f & ( FEAT_MAKE | FEAT_TOGGLE | FEAT_COMBAT ) ) && !( flags & FEAT_SELECT ) ) return false; // dependem da seleção
 	return ( flags & f ) == f;
@@ -365,4 +366,20 @@ void config::SetCustomActive( bool on ){
 	std::wstring prefs = vfs::WritableDir() + L"preferencias.ini";
 	WritePrivateProfileStringW( L"preferencias", L"selecao", on ? L"personalizada" : L"original", prefs.c_str() );
 	logger::Write( "Selecao de personagem: %s", on ? "personalizada" : "original" );
+}
+
+namespace { int g_minimapIcons = -1; }
+
+bool config::MinimapIcons(){
+	if( g_minimapIcons < 0 ){
+		std::wstring prefs = vfs::WritableDir() + L"preferencias.ini";
+		g_minimapIcons = GetPrivateProfileIntW( L"preferencias", L"minimapa_icones", 1, prefs.c_str() ) != 0 ? 1 : 0;
+	}
+	return g_minimapIcons == 1;
+}
+
+void config::SetMinimapIcons( bool on ){
+	g_minimapIcons = on ? 1 : 0;
+	std::wstring prefs = vfs::WritableDir() + L"preferencias.ini";
+	WritePrivateProfileStringW( L"preferencias", L"minimapa_icones", on ? L"1" : L"0", prefs.c_str() );
 }

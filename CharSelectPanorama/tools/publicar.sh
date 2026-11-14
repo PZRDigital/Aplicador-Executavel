@@ -14,7 +14,8 @@ if echo "$SAIDA" | grep -qE " error |Falha na compilacao"; then
 	exit 1
 fi
 test -f bin/Release/d3d9.dll
-powershell.exe -Command "Get-Process Codex -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 1" || true
+# só o cliente (o nome "Codex" também é de outros programas)
+powershell.exe -Command "Get-Process Codex -ErrorAction SilentlyContinue | Where-Object { \$_.Path -like '*\\Cliente 2025\\Codex.exe' } | Stop-Process -Force; Start-Sleep 1" || true
 python3 tools/embutir.py base/Codex_warp.exe bin/Release/d3d9.dll dist/Codex.exe
 cp dist/Codex.exe "$CLIENTE/Codex.exe"
 if [ "$1" != "--sem-grf" ]; then
@@ -27,6 +28,7 @@ if [ "$1" != "--sem-grf" ]; then
 	python3 tools/pets.py "$CLIENTE"
 	python3 tools/elementos.py "$EMULADOR"
 	python3 tools/pokedex.py
+	python3 tools/icones_hud.py "$CLIENTE"
 	python3 tools/substituicoes.py "$CLIENTE"
 	python3 tools/criar_grf.py dist/charselect dist/char.grf
 	cp dist/char.grf "$CLIENTE/char.grf"

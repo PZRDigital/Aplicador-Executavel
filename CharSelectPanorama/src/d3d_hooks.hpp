@@ -9,4 +9,7 @@ namespace d3dhooks {
 	// ao identificar quem desenha (cursor).
 	void SetSelfImage( void* base );
 	void DebugDiagNow( int frames ); // registra os próximos quadros (debug)
+	// Ícones de buff levados para a linha ao lado do cartão de HP: sobre um deles, o alvo é o original (coluna
+	// da direita); no lugar antigo (agora vazio), o alvo sai da coluna para o cliente não achar o ícone
+	bool BuffRedirect( float x, float y, float& tx, float& ty );
 }

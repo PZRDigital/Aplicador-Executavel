@@ -24,6 +24,9 @@ namespace gfx {
 		ZeroSmall,  // Tahoma 11 sem suavização (textos da interface do Ragnarok Zero)
 		ZeroName,   // Tahoma 13 negrito sem suavização (nome na barra de status do Zero)
 		ZeroMedium, // Tahoma 12 sem suavização (nome do mapa)
+		Text12,     // Inter 12 (janela Personagem)
+		Text12Bold, // Inter 12 semibold
+		Title15,    // Inter 15 bold (título da janela Personagem)
 		COUNT
 	};
 
@@ -75,6 +78,7 @@ namespace gfx {
 	// Texto em UTF-16. Retorna a largura desenhada. maxWidth > 0 corta com reticências.
 	float Text( Font font, const std::wstring& text, float x, float y, D3DCOLOR color,
 		int align = Left, float maxWidth = 0.0f, bool shadow = true );
+	void SetTextShadows( bool on ); // liga/desliga a sombra de todos os Text (padrão: ligada)
 	// Texto com contorno de 1 pixel (rótulos do cliente: cor + cor do contorno)
 	float TextOutline( Font font, const std::wstring& text, float x, float y, D3DCOLOR color, D3DCOLOR outline, int align = Left );
 	float TextWidth( Font font, const std::wstring& text );
