@@ -136,6 +136,7 @@ namespace config {
 		FEAT_MENU = 4096,     // menu de ícones do Ragnarok Zero
 		FEAT_QUESTWND = 8192, // janela de quests do Ragnarok Zero
 		FEAT_PETWND = 16384,  // Pokédex no lugar da janela de pet (Alt+J)
+		FEAT_LGP = 32768,     // LGP: marcações no chão (@lgp, @aoes, @square, @circle)
 	};
 	bool Feature( unsigned f );
 	void SetCustomActive( bool on );

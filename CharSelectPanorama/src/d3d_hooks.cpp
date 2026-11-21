@@ -15,6 +15,7 @@
 #include "gfx.hpp"
 #include "game.hpp"
 #include "itemdb.hpp"
+#include "lgp.hpp"
 #include "input.hpp"
 #include "log.hpp"
 #include "scene.hpp"
@@ -77,6 +78,7 @@ namespace {
 	bool g_firstDrawDone = false;
 	int g_lastSlot = -1;
 	unsigned g_frame = 0;
+	IDirect3DDevice9* g_device = nullptr; // device do cliente (LGP desenha nele)
 
 	Phase g_phase = Phase::Background;
 	float g_originX = 0, g_originY = 0;
@@ -2487,6 +2489,7 @@ namespace {
 		if( gfx::IsDrawing() ){
 			return false;
 		}
+		lgp::CountDraw();
 		// Modo foto (tecla Pause) fora da seleção: por enquanto só registra um frame para análise
 		if( !g_wasActive && !g_loginActive ){
 			if( GameWindowDraw( dev, info, upData, upStride, startVertex, indexed ) ){
@@ -2779,6 +2782,7 @@ namespace {
 	}
 
 	void OnDeviceLost(){
+		lgp::OnDeviceLost();
 		for( DeferredSprite& d : g_deferred ) d.state.Release();
 		g_deferred.clear();
 		g_platesPending = false;
@@ -2844,6 +2848,7 @@ namespace {
 	}
 
 	void HookDevice( IDirect3DDevice9* dev, HWND focusWindow ){
+		g_device = dev;
 		HookVtable( dev, IDX_DEV_RESET, &Hook_Reset, o_Reset );
 		HookVtable( dev, IDX_DEV_PRESENT, &Hook_Present, o_Present );
 		HookVtable( dev, IDX_DEV_DRAWPRIMITIVE, &Hook_DrawPrimitive, o_DrawPrimitive );
@@ -2859,6 +2864,7 @@ namespace {
 			ex->Release();
 		}
 		logger::Write( "Device D3D9 criado e interceptado (Ex=%d)", isEx );
+		if( config::Feature( config::FEAT_LGP ) ) lgp::OnDevice( dev );
 		scene::Preload();
 
 		if( config::Get().uiEnabled ){
@@ -2890,6 +2896,10 @@ void d3dhooks::DebugDiagNow( int frames ){
 	g_diagDelay = 0;
 	g_diagFramesLeft = frames;
 	logger::Write( "=== Diagnostico imediato ===" );
+}
+
+IDirect3DDevice9* d3dhooks::Device(){
+	return g_device;
 }
 
 void d3dhooks::SetSelfImage( void* base ){

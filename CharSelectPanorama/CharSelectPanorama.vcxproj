@@ -85,6 +85,7 @@
     <ClCompile Include="src\game.cpp" />
     <ClCompile Include="src\gfx.cpp" />
     <ClCompile Include="src\itemdb.cpp" />
+    <ClCompile Include="src\lgp.cpp" />
     <ClCompile Include="src\input.cpp" />
     <ClCompile Include="src\log.cpp" />
     <ClCompile Include="src\scene.cpp" />
@@ -103,6 +104,7 @@
     <ClInclude Include="src\game.hpp" />
     <ClInclude Include="src\gfx.hpp" />
     <ClInclude Include="src\itemdb.hpp" />
+    <ClInclude Include="src\lgp.hpp" />
     <ClInclude Include="src\input.hpp" />
     <ClInclude Include="src\log.hpp" />
     <ClInclude Include="src\scene.hpp" />

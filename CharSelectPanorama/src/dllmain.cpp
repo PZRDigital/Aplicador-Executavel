@@ -11,6 +11,7 @@
 #include "config.hpp"
 #include "d3d_hooks.hpp"
 #include "game.hpp"
+#include "lgp.hpp"
 #include "skin.hpp"
 #include "log.hpp"
 
@@ -156,7 +157,7 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, LPVOID ){
 		config::Load();
 		if( config::Get().enabled ){
 			client::Install();
-			if( config::Feature( config::FEAT_HUD ) || config::Feature( config::FEAT_ITEMWND ) || config::Feature( config::FEAT_MENU ) || config::Feature( config::FEAT_QUESTWND ) || config::Feature( config::FEAT_PETWND ) ) game::InstallEarly();
+			if( config::Feature( config::FEAT_HUD ) || config::Feature( config::FEAT_ITEMWND ) || config::Feature( config::FEAT_MENU ) || config::Feature( config::FEAT_QUESTWND ) || config::Feature( config::FEAT_PETWND ) || config::Feature( config::FEAT_LGP ) ) game::InstallEarly();
 			if( config::Feature( config::FEAT_HUD ) ) skin::InstallFiles(); // chat do Zero e atributos em português
 			if( config::Feature( config::FEAT_HUD ) ) game::DisableStatusWindow(); // atributos ficam na janela Personagem (Alt+Q)
 			if( config::Feature( config::FEAT_HUD ) ) charwnd::Install(); // janela Personagem desenhada pelo cliente
@@ -176,6 +177,7 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, LPVOID ){
 			if( config::Feature( config::FEAT_MAKE ) ) charwnd::InstallMake(); // e a criação
 			if( config::Feature( config::FEAT_FADE ) ) client::InstallFastFade( config::Get().fadeMs );
 			if( config::Get().playerBars ) client::InstallPlayerGage();
+			if( config::Feature( config::FEAT_LGP ) ) lgp::Install(); // marcações no chão e comandos @lgp/@aoes/@square/@circle
 			bool custom = config::CustomActive() && config::Feature( config::FEAT_COMBAT );
 			client::SetSelectedAction( custom ? config::Get().selectedAction : -1, config::Get().actionFrameMs,
 				custom ? config::Get().attackAction : -1, config::Get().attackEveryMs );

@@ -8,6 +8,8 @@ namespace d3dhooks {
 	// Imagem da própria interface (DLL ou cópia embutida no executável): quadros dela são ignorados
 	// ao identificar quem desenha (cursor).
 	void SetSelfImage( void* base );
+	// Device D3D9 do cliente (nullptr antes da criação)
+	IDirect3DDevice9* Device();
 	void DebugDiagNow( int frames ); // registra os próximos quadros (debug)
 	// Ícones de buff levados para a linha ao lado do cartão de HP: sobre um deles, o alvo é o original (coluna
 	// da direita); no lugar antigo (agora vazio), o alvo sai da coluna para o cliente não achar o ícone

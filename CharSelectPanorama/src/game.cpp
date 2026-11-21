@@ -1,5 +1,6 @@
 #include <set>
 #include "game.hpp"
+#include "lgp.hpp"
 
 #include <winsock2.h>
 
@@ -189,6 +190,7 @@ namespace {
 	}
 
 	void Handle( uint16_t id, const uint8_t* b, size_t len ){
+		if( config::Feature( config::FEAT_LGP ) ) lgp::OnPacket( id, b, len );
 		if( id == 0x00B4 && len > 8 ) NpcSay( Rd<uint32_t>( b, 4 ), reinterpret_cast<const char*>( b + 8 ), len - 8 ); // ZC_SAY_DIALOG
 		if( id == 0x00B6 && len >= 6 ){ std::lock_guard<std::mutex> g( g_npcLock ); g_npcFresh = true; g_npcWait = 2; } // ZC_CLOSE_DIALOG
 		if( id == 0x00B5 ) g_npcWait = 1; // ZC_WAIT_DIALOG: botão seguir

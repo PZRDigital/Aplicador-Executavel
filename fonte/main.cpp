@@ -57,6 +57,7 @@ namespace {
 		{ embutir::MENU, L"Menu", L"Menu de ícones do Ragnarok Zero", true, nullptr },
 		{ embutir::QUESTS, L"Quests", L"Alt+U no estilo do Ragnarok Zero", true, nullptr },
 		{ embutir::POKEDEX, L"Pokédex", L"Alt+J (pet) como Pokédex animada", true, nullptr },
+		{ embutir::LGP, L"LGP (marcações no chão)", L"@lgp, @aoes, @square e @circle", true, nullptr },
 	};
 	const int N_OPCOES = sizeof( g_opcoes ) / sizeof( g_opcoes[0] );
 
@@ -471,7 +472,7 @@ namespace {
 				g_entrada = Controle( L"EDIT", L"", ES_AUTOHSCROLL, Ret( 50, 185, 486, 20 ), ID_ENTRADA, g_texto );
 				g_procurar = Controle( L"BUTTON", L"PROCURAR", BS_OWNERDRAW, Ret( 558, 176, 122, 36 ), ID_PROCURAR, g_botao );
 				for( int i = 0; i < N_OPCOES; i++ ){
-					int col = i < 7 ? 0 : 1, lin = i % 7; // 7 por coluna
+					int col = i < 8 ? 0 : 1, lin = i % 8; // 8 por coluna (a última linha termina em 784, antes do botão em 786)
 					g_opcoes[i].h = Controle( L"BUTTON", g_opcoes[i].nome, BS_OWNERDRAW,
 						Ret( 32 + col * 330, 450 + lin * 42, 318, 40 ), ID_OPCAO + i, g_botao );
 				}
@@ -590,11 +591,11 @@ int WINAPI wWinMain( HINSTANCE inst, HINSTANCE, LPWSTR, int show ){
 		for( int i = 2; i < argc; i++ ){
 			if( _wcsicmp( argv[i], L"/semgrf" ) == 0 ) grf = false;
 			if( _wcsnicmp( argv[i], L"/alteracoes=", 12 ) == 0 ){
-				// ex.: /alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests,pokedex
+				// ex.: /alteracoes=login,selecao,criacao,chave,combate,fade,status,item,equip,inventario,habilidades,menu,quests,pokedex,lgp
 				std::wstring v = argv[i] + 12;
 				alt = 0;
-				const wchar_t* nomes[] = { L"login", L"selecao", L"criacao", L"chave", L"combate", L"fade", L"status", L"item", L"", L"equip", L"inventario", L"habilidades", L"menu", L"quests", L"pokedex" };
-				for( int k = 0; k < 15; k++ ) if( nomes[k][0] ) if( v.find( nomes[k] ) != std::wstring::npos ) alt |= 1u << k;
+				const wchar_t* nomes[] = { L"login", L"selecao", L"criacao", L"chave", L"combate", L"fade", L"status", L"item", L"", L"equip", L"inventario", L"habilidades", L"menu", L"quests", L"pokedex", L"lgp" };
+				for( int k = 0; k < 16; k++ ) if( nomes[k][0] ) if( v.find( nomes[k] ) != std::wstring::npos ) alt |= 1u << k;
 			}
 		}
 		_wfopen_s( &g_arqLog, ( PastaDoApp() + L"aplicador.log" ).c_str(), L"w, ccs=UTF-8" );
